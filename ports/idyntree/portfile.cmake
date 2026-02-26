@@ -2,7 +2,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO robotology/idyntree
     REF "v${VERSION}"
-    SHA512 5661fb442fb6d28e71efcb9780c4205b90017e7f4c0bc761c170e59b1cff22b281c5c8c15bf9c4b2cede1e0bbbb05b53f4a22556e0b5b3678abd4d3f47be49d4
+    SHA512 bfcdddebb2ae3d5b9e75cea799d4dfb6ad745d26eb220419c9795c30397ee400dce7669546fe78aadbab49e29be48b3ecece7bb972c1032d04f6b621a1d5bcf0
     HEAD_REF master
 )
 
@@ -24,10 +24,8 @@ vcpkg_cmake_configure(
         -DIDYNTREE_USES_LUA:BOOL=OFF
         -DIDYNTREE_USES_YARP:BOOL=OFF
         -DIDYNTREE_USES_ICUB_MAIN:BOOL=OFF
-        -DIDYNTREE_USES_QT5:BOOL=OFF
         -DIDYNTREE_USES_ALGLIB:BOOL=OFF
         -DIDYNTREE_USES_WORHP:BOOL=OFF
-        -DIDYNTREE_COMPILE_TESTS=OFF
 )
 
 vcpkg_cmake_install()
@@ -52,5 +50,5 @@ file(REMOVE_RECURSE
     "${CURRENT_PACKAGES_DIR}/debug/include"
 )
 
-vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE.LGPL2" "${SOURCE_PATH}/LICENSE.LGPL3")
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")
 file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")

@@ -1,14 +1,14 @@
-set(7ZIP_VERSION "2201")
-vcpkg_download_distfile(ARCHIVE
-    URLS "https://www.7-zip.org/a/7z${7ZIP_VERSION}-src.7z"
-    FILENAME "7z${7ZIP_VERSION}-src.7z"
-    SHA512 c37cede4b7253b8dc4372e9e011ef0fee0c1cd53cf9705bf106672a455e7ce1e5a0a288c763d73d3c28b2a41fb860c9bacb702b01d9192eed810787c7da1e0d8
-)
+string(REGEX REPLACE "[.]([0-9])\$" ".0\\1" upstream_version "${VERSION}")
 
-vcpkg_extract_source_archive(
-    SOURCE_PATH
-    ARCHIVE "${ARCHIVE}"
-    NO_REMOVE_ONE_LEVEL
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO ip7z/7zip
+    REF "${upstream_version}"
+    SHA512 5f4922efd94e12776e531f77053981978a0d9f8c6da50f51bdb750a54436b07ddccafa6a1180fd234a7fcaf4d2a5b0ab7c2a9267da2ea8e68407bf432ff0f76c
+    HEAD_REF main
+    PATCHES
+        sort-asm.diff
+        fix_timespec_get_broken_on_android.patch
 )
 
 file(COPY "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt" DESTINATION "${SOURCE_PATH}")
@@ -16,6 +16,8 @@ file(COPY "${CMAKE_CURRENT_LIST_DIR}/7zip-config.cmake.in" DESTINATION "${SOURCE
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        "-DVCPKG_TARGET_ARCHITECTURE=${VCPKG_TARGET_ARCHITECTURE}"
 )
 
 vcpkg_cmake_install()
@@ -23,10 +25,6 @@ vcpkg_copy_pdbs()
 
 vcpkg_cmake_config_fixup()
 
-file(
-    INSTALL "${SOURCE_PATH}/DOC/License.txt"
-    DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}"
-    RENAME copyright
-)
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/DOC/License.txt")
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")

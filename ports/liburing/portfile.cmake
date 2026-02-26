@@ -1,26 +1,31 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO axboe/liburing
-    REF dda4848a9911120a903bef6284fb88286f4464c9 #liburing-2.2
-    SHA512 c2e4969ffb895996bf7465ce86143d4d3401a052624ec19580d34e8adbb2b57801e03541493f61e19a3137984714db645b135b1bc3b41987bccfd926bb486c09 
+    REF "liburing-${VERSION}"
+    SHA512 3eb8419cd6c9ae4909b9697b188f5c6a27e107694eefe9747822524c8710e0798476aa43acada578fcbcf6e46b63ebdfb59350e4ba8f928dfe7cac3614e32a48
     HEAD_REF master
     PATCHES
         fix-configure.patch     # ignore unsupported options, handle ENABLE_SHARED
         disable-tests-and-examples.patch
 )
 
+# https://github.com/axboe/liburing/blob/liburing-2.8/src/Makefile#L13
+set(ENV{CFLAGS} "$ENV{CFLAGS} -O3 -Wall -Wextra -fno-stack-protector")
+
+# without this calls to `realpath ${prefix}` inside the build system fail for the debug build if this is the first
+# library to be installed
+file(MAKE_DIRECTORY "${CURRENT_INSTALLED_DIR}/debug")
+
 # note: check ${SOURCE_PATH}/liburing.spec before updating configure options
 vcpkg_configure_make(
     SOURCE_PATH "${SOURCE_PATH}"
     COPY_SOURCE
+    DETERMINE_BUILD_TRIPLET
+    OPTIONS
+        [[--libdevdir=\${prefix}/lib]] # must match libdir
 )
 vcpkg_install_make()
 vcpkg_fixup_pkgconfig()
-
-file(INSTALL "${SOURCE_PATH}/LICENSE"
-     DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
-file(INSTALL "${CURRENT_PORT_DIR}/usage"
-     DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
 
 # note: {SOURCE_PATH}/src/Makefile makes liburing.so from liburing.a.
 #   For dynamic, remove intermediate file liburing.a when install is finished.
@@ -33,3 +38,16 @@ file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/man")
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/${PORT}/man2")
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/${PORT}/man3")
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/${PORT}/man7")
+
+# Cf. README
+vcpkg_install_copyright(COMMENT [[
+All software contained from liburing is dual licensed LGPL and MIT, see
+COPYING and LICENSE, except for a header coming from the kernel which is
+dual licensed GPL with a Linux-syscall-note exception and MIT, see
+COPYING.GPL and <https://spdx.org/licenses/Linux-syscall-note.html>.
+]]
+    FILE_LIST
+        "${SOURCE_PATH}/LICENSE"
+        "${SOURCE_PATH}/COPYING"
+        "${SOURCE_PATH}/COPYING.GPL"
+)

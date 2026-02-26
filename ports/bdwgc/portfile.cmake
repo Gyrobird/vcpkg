@@ -1,8 +1,8 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO ivmai/bdwgc
-    REF v8.2.2
-    SHA512 da6a2de30f096610ea1c0de1ff7a3ab434debaa39199bc1426daff620901fc76e5747e43171d742b17f4afa3c77ef447cba4fda69d76a711e108f3f03af917ca
+    REPO bdwgc/bdwgc
+    REF "v${VERSION}"
+    SHA512 514824d4171374bb0f3211c79732dd84cb3af44f515b2fb51b7fa339a5194ba653cc93f1d56d9da202c959f2f9ee451f0d0c67da42d0b0531a9c749da91a30a0
     HEAD_REF master
 )
 

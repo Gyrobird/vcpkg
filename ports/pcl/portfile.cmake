@@ -1,25 +1,34 @@
+vcpkg_download_distfile(BOOST_1_89_0_COMPAT_PATCH
+    URLS https://github.com/PointCloudLibrary/pcl/commit/99333442ac63971297b4cdd05fab9d2bd2ff57a4.patch?full_index=1
+    FILENAME PointCloudLibrary-pcl-boost-1-89-0-compat.patch
+    SHA512 2fefaeaeda9fe423b481cddf4de85eff58418286f24f065be8610216e87d8faeb869406b72b3a7158abd22d17e25742b54f6b9eb3c81f82a1718f938bb8e0d26
+)
+vcpkg_download_distfile(EIGEN3_5_0_0_COMPAT_PATCH
+    URLS https://github.com/PointCloudLibrary/pcl/commit/2d6929bdcd98beaa28fa8ee3a105beb566f16347.patch?full_index=1
+    FILENAME PointCloudLibrary-pcl-eigen3-5-0-0-compat.patch
+    SHA512 993a1f29d8dd62cee526a92f0c2bf62dca566428523166abfb74337da137d47dcf97febb9d98b2a17ee6cea331045350bfb37b221403c08214beaebb7120bf41
+)
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO PointCloudLibrary/pcl
-    REF 371a8e1373f7b2f66bbb92291be2f3e50dc19856 # pcl-1.13.0
-    SHA512 5c023e46386882d51a5d9a3c8ac594c17585e3d14c011964109ad0ae432c660ebb7fc1fe56f1130b6eafa75d1d9ca48f05e22e1d7cbb4a0794e32982da168563
+    REF "pcl-${VERSION}"
+    SHA512 ca9e742bc24b38f31c42c9ea08e19054e18d045f487269b64a7b831dada89936445d90a5b46870d8c24c2d25b33a59df2d904fe7e51bc0b231317cdb319951e9
     HEAD_REF master
     PATCHES
-        add-gcc-version-check.patch
         fix-check-sse.patch
         fix-numeric-literals-flag.patch
-        pcl_config.patch
-        pcl_utils.patch
+        install-layout.patch
         install-examples.patch
-        no-absolute.patch
-        add_bigobj_option.patch
-        outofcore_viewer_remove_include.patch
-        fix_opennurbs_win32.patch
-        disable_kinfu_for_cuda12.patch
-        devendor-zlib.patch
+        fix-clang-cl.patch
+        "${BOOST_1_89_0_COMPAT_PATCH}"
+        "${EIGEN3_5_0_0_COMPAT_PATCH}"
 )
 
 string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "dynamic" PCL_SHARED_LIBS)
+
+if(VCPKG_TARGET_ARCHITECTURE STREQUAL "arm64" OR VCPKG_TARGET_ARCHITECTURE STREQUAL "arm")
+	set(PCL_DONT_TRY_SSE "-DPCL_ENABLE_SSE=OFF")
+endif()
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
     FEATURES
@@ -28,6 +37,7 @@ vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
         cuda            BUILD_CUDA
         cuda            BUILD_GPU
         examples        BUILD_examples
+        examples        VCPKG_LOCK_FIND_PACKAGE_cJSON
         libusb          WITH_LIBUSB
         opengl          WITH_OPENGL
         openni2         WITH_OPENNI2
@@ -35,6 +45,7 @@ vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
         qt              WITH_QT
         simulation      BUILD_simulation
         surface-on-nurbs BUILD_surface_on_nurbs
+        surface-on-nurbs VCPKG_LOCK_FIND_PACKAGE_ZLIB
         tools           BUILD_tools
         visualization   WITH_VTK
         visualization   BUILD_visualization
@@ -52,17 +63,21 @@ vcpkg_cmake_configure(
         -DPCL_BUILD_WITH_FLANN_DYNAMIC_LINKING_WIN32=${PCL_SHARED_LIBS}
         -DPCL_BUILD_WITH_QHULL_DYNAMIC_LINKING_WIN32=${PCL_SHARED_LIBS}
         -DPCL_SHARED_LIBS=${PCL_SHARED_LIBS}
+        -DPCL_ENABLE_MARCHNATIVE=OFF
+        ${PCL_DONT_TRY_SSE}
+        -DUSE_HOMEBREW_FALLBACK=OFF
         # WITH
         -DWITH_DAVIDSDK=OFF
         -DWITH_DOCS=OFF
         -DWITH_DSSDK=OFF
         -DWITH_ENSENSO=OFF
-        -DWITH_OPENMP=OFF
         -DWITH_OPENNI=OFF
         -DWITH_PNG=ON
         -DWITH_QHULL=ON
         -DWITH_RSSDK=OFF
         -DWITH_RSSDK2=OFF
+        # Misc
+        -DVCPKG_LOCK_FIND_PACKAGE_ClangFormat=OFF
         # FEATURES
         ${FEATURE_OPTIONS}
     OPTIONS_DEBUG
@@ -73,6 +88,10 @@ vcpkg_cmake_configure(
         PCL_BUILD_WITH_FLANN_DYNAMIC_LINKING_WIN32
         PCL_BUILD_WITH_QHULL_DYNAMIC_LINKING_WIN32
 )
+
+if(NOT EXISTS "${CURRENT_INSTALLED_DIR}/lib/pkgconfig/vtk.pc")
+    file(REMOVE "${CURRENT_PACKAGE_DIR}/lib/pkgconfig/pcl_gpu_kinfu_large_scale.pc" "${CURRENT_PACKAGE_DIR}/debug/lib/pkgconfig/pcl_gpu_kinfu_large_scale.pc")
+endif()
 
 vcpkg_cmake_install()
 vcpkg_cmake_config_fixup()
@@ -119,6 +138,12 @@ if(BUILD_tools OR BUILD_apps OR BUILD_examples)
     endif()
     vcpkg_copy_tools(TOOL_NAMES ${tool_names} AUTO_CLEAN)
 endif()
+
+# pcl_apps.dll is only build for release but not used at all since BUILD_apps_3d_rec_framework is OFF.
+# Because it is not copied to the tool folder and there is no debug variant, we get an post build check error.
+# Since the lib is not needed. Delete it:
+file(REMOVE "${CURRENT_PACKAGES_DIR}/bin/pcl_apps.dll" "${CURRENT_PACKAGES_DIR}/bin/pcl_apps.pdb"
+            "${CURRENT_PACKAGES_DIR}/lib/pcl_apps.lib" "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/pcl_apps.pc")
 
 file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE.txt")

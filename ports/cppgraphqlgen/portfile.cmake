@@ -1,9 +1,19 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO microsoft/cppgraphqlgen
-    REF v4.5.1
-    SHA512 a4539d09eabecc7dc0c6715796db4915c8ac602fc1650b8a212b2a09168be15eb0992646fd5b577b7c7c06d8f77e808dae2481027ceb053c96e5b5eabd560103
+    REF "v${VERSION}"
+    SHA512 eb26e6b9b51eabeb84ab82035097579dcdc5f44cc1d50ae85303bbab8fcc2a3da0749cef4e15bf09adb62a4783446bb8b661666db52517b2e98543177f662eb5
     HEAD_REF main
+    PATCHES
+        356.patch # https://patch-diff.githubusercontent.com/raw/microsoft/cppgraphqlgen/pull/356.patch
+)
+
+vcpkg_check_features(
+    OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES
+        clientgen   GRAPHQL_BUILD_CLIENTGEN
+        rapidjson   GRAPHQL_USE_RAPIDJSON
+        schemagen   GRAPHQL_BUILD_SCHEMAGEN
 )
 
 vcpkg_cmake_configure(
@@ -13,6 +23,7 @@ vcpkg_cmake_configure(
         -DGRAPHQL_UPDATE_VERSION=OFF 
         -DGRAPHQL_UPDATE_SAMPLES=OFF 
         -DGRAPHQL_INSTALL_CONFIGURATIONS=Release
+        ${FEATURE_OPTIONS}
     OPTIONS_RELEASE 
         -DGRAPHQL_INSTALL_CMAKE_DIR=${CURRENT_PACKAGES_DIR}/share 
         -DGRAPHQL_INSTALL_TOOLS_DIR=${CURRENT_PACKAGES_DIR}/tools
@@ -25,9 +36,19 @@ vcpkg_cmake_install()
 
 vcpkg_cmake_config_fixup()
 
-vcpkg_copy_tools(
-    TOOL_NAMES schemagen clientgen
-    SEARCH_DIR ${CURRENT_PACKAGES_DIR}/tools/cppgraphqlgen)
+set(tools "")
+if ("clientgen" IN_LIST FEATURES)
+    list(APPEND tools clientgen)
+endif()
+if ("schemagen" IN_LIST FEATURES)
+    list(APPEND tools schemagen)
+endif()
+list(LENGTH tools num_tools)
+if (num_tools GREATER 0)
+    vcpkg_copy_tools(
+        TOOL_NAMES ${tools}
+        SEARCH_DIR ${CURRENT_PACKAGES_DIR}/tools/cppgraphqlgen)
+endif()
 
 vcpkg_copy_pdbs()
 

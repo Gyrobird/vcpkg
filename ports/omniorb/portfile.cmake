@@ -1,5 +1,5 @@
 vcpkg_download_distfile(ARCHIVE
-    URLS "https://netcologne.dl.sourceforge.net/project/omniorb/omniORB/omniORB-4.3.0/omniORB-4.3.0.tar.bz2"
+    URLS "https://netcologne.dl.sourceforge.net/project/omniorb/omniORB/omniORB-${VERSION}/omniORB-${VERSION}.tar.bz2"
     FILENAME "omniORB-${VERSION}.tar.bz2"
     SHA512 b081c1acbea3c7bee619a288fec209a0705b7d436f8e5fd4743675046356ef271a8c75882334fcbde4ff77d15f54d2da55f6cfcd117b01e42919d04fd29bfe2f
 )
@@ -32,6 +32,13 @@ vcpkg_extract_source_archive(
 vcpkg_add_to_path("${CURRENT_HOST_INSTALLED_DIR}/tools/python3") # port ask python distutils for info.
 if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
   set(ENV{PYTHONPATH} "${CURRENT_HOST_INSTALLED_DIR}/tools/python3/Lib${VCPKG_HOST_PATH_SEPARATOR}${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/lib/python${VCPKG_HOST_PATH_SEPARATOR}${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg/lib/python")
+endif()
+
+if(NOT VCPKG_TARGET_IS_WINDOWS)
+    file(GLOB _py3_include_path "${CURRENT_HOST_INSTALLED_DIR}/include/python3*")
+    string(REGEX MATCH "python3\\.([0-9]+)" _python_version_tmp "${_py3_include_path}")
+    set(PYTHON_VERSION_MINOR "${CMAKE_MATCH_1}")
+    list(APPEND OPTIONS "PYTHON=${CURRENT_HOST_INSTALLED_DIR}/tools/python3/python3.${PYTHON_VERSION_MINOR}")
 endif()
 
 vcpkg_find_acquire_program(FLEX)
@@ -127,7 +134,7 @@ if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
       if(filename STREQUAL "omnithread3")
         vcpkg_replace_string("${pc_file}" "-lomnithread" "-lomnithread_rt")
       else()
-        vcpkg_replace_string("${pc_file}" "-l${filename}" "-l${filename}_rt")
+        vcpkg_replace_string("${pc_file}" "-l${filename}" "-l${filename}_rt" IGNORE_UNCHANGED)
       endif()
     endforeach()
   endif()
@@ -156,7 +163,7 @@ if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
         if(filename STREQUAL "omnithread3")
           vcpkg_replace_string("${pc_file}" "-lomnithread" "-lomnithread_rtd")
         else()
-          vcpkg_replace_string("${pc_file}" "-l${filename}" "-l${filename}_rtd")
+          vcpkg_replace_string("${pc_file}" "-l${filename}" "-l${filename}_rtd" IGNORE_UNCHANGED)
         endif()
       endforeach()
     endif()

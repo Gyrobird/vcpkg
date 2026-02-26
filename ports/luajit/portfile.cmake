@@ -1,134 +1,118 @@
-if (VCPKG_TARGET_IS_OSX)
-	set (LJIT_PATCHES 005-do-not-pass-ld-e-macosx.patch)
-else()
-	set (LJIT_PATCHES "")
-endif()
-
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO LuaJIT/LuaJIT
-    REF d0e88930ddde28ff662503f9f20facf34f7265aa  #2023-01-04
-    SHA512 e4111b2d7eeb05676c62d69da13a380a51d98f082c0be575a414c09ee27ff17d101b5b4a95e1b8a1bad14d55a4d2b305718a11878fbf36e0d3d48e62ba03407f
+    REF 1c3b5a4d722598ecbb9219480142eda682e87bb1  # 2026-02-16
+    SHA512 6ecfa6fbe159165a3a7d376cf632b6252a0fce1a62e4f1af0a5f5a50700e0e5ee56332d937396bd4e3568ae232e228867e8e8fda75cd92415f47fb670148f398
     HEAD_REF master
     PATCHES
+        msvcbuild.patch
         003-do-not-set-macosx-deployment-target.patch
-        004-fix-build-path-and-crt-linkage.patch
-        ${LJIT_PATCHES}
 )
 
-if (VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    set (LJIT_STATIC "")
-    set (LJIT_MSVC_PC_CFLAGS "/DLUA_BUILD_AS_DLL=1")
+vcpkg_cmake_get_vars(cmake_vars_file)
+include("${cmake_vars_file}")
+
+if(VCPKG_DETECTED_MSVC)
+    set(VSCMD_ARG_TGT_ARCH "${VCPKG_TARGET_ARCHITECTURE}")
+    if(VCPKG_TARGET_ARCHITECTURE STREQUAL "arm64")
+        if(DEFINED ENV{PROCESSOR_ARCHITEW6432})
+            set(host_arch $ENV{PROCESSOR_ARCHITEW6432})
+        else()
+            set(host_arch $ENV{PROCESSOR_ARCHITECTURE})
+        endif()
+        if(host_arch MATCHES "(amd|AMD)64")
+            set(ENV{VSCMD_ARG_HOST_ARCH} "x64")
+        endif()
+    endif()
+
+    vcpkg_list(SET options)
+    if (VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+        list(APPEND options "MSVCBUILD_OPTIONS=static")
+    endif()
+
+    vcpkg_install_nmake(SOURCE_PATH "${SOURCE_PATH}"
+        PROJECT_NAME "${CMAKE_CURRENT_LIST_DIR}/Makefile.nmake"
+        OPTIONS
+            ${options}
+    )
+
+    if (VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
+        vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/luajit/luaconf.h" "defined(LUA_BUILD_AS_DLL)" "1")
+    endif()
+
+    file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/luajit.pc" DESTINATION "${CURRENT_PACKAGES_DIR}/lib/pkgconfig")
+    if(NOT VCPKG_BUILD_TYPE)
+        file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/luajit.pc" DESTINATION "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig")
+    endif()
+
+    vcpkg_copy_pdbs()
+
+    # jit including the specific vmdef.lua generated during the build
+    file(COPY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/src/jit" DESTINATION "${CURRENT_PACKAGES_DIR}/tools/luajit/lua")
+
 else()
-    set (LJIT_STATIC "static")
-    set (LJIT_MSVC_PC_CFLAGS "")
-endif()
-
-if(VCPKG_TARGET_IS_OSX)
-    set(MACOSX_DEPLOYMENT_TARGET "MACOSX_DEPLOYMENT_TARGET=${VCPKG_OSX_DEPLOYMENT_TARGET}")
-    set(TARGET_ARCHITECTURE "${VCPKG_TARGET_ARCHITECTURE}")
-    if(TARGET_ARCHITECTURE STREQUAL x64)
-        set(TARGET_ARCHITECTURE x86_64)
+    vcpkg_list(SET options)
+    if(VCPKG_CROSSCOMPILING)
+        list(APPEND options
+            "LJARCH=${VCPKG_TARGET_ARCHITECTURE}"
+            "BUILDVM_X=${CURRENT_HOST_INSTALLED_DIR}/manual-tools/${PORT}/buildvm-${VCPKG_TARGET_ARCHITECTURE}${VCPKG_HOST_EXECUTABLE_SUFFIX}"
+            "HOST_LUA=${CURRENT_HOST_INSTALLED_DIR}/manual-tools/${PORT}/minilua${VCPKG_HOST_EXECUTABLE_SUFFIX}"
+        )
     endif()
-    list(APPEND MACOSX_ARCHITECTURES "TARGET_CFLAGS=--target=${TARGET_ARCHITECTURE}-apple-darwin")
-    list(APPEND MACOSX_ARCHITECTURES "TARGET_LDFLAGS=--target=${TARGET_ARCHITECTURE}-apple-darwin")
-endif()
 
-if (NOT VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL debug)
-    message(STATUS "Building ${TARGET_TRIPLET}-dbg")
-    file(REMOVE_RECURSE "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg")
-    file(MAKE_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg")
-
-    if (VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
-        vcpkg_execute_required_process_repeat(
-            COUNT 1
-            COMMAND "${SOURCE_PATH}/src/msvcbuild.bat" ${SOURCE_PATH}/src ${VCPKG_CRT_LINKAGE} debug ${LJIT_STATIC}
-            WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg"
-            LOGNAME build-${TARGET_TRIPLET}-dbg
-        )
-
-        # Note that luajit's build system responds to failure by producing no output; in particular a likely outcome is
-        # only 'minilua.exe' being produced. This resulted in:
-        # https://github.com/microsoft/vcpkg/pull/25856#issuecomment-1214285736
-        # Please ensure luajit.exe is actually produced when making future changes.
-        file(INSTALL "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg/luajit.exe" DESTINATION "${CURRENT_PACKAGES_DIR}/debug/tools")
-        file(INSTALL "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg/lua51.lib" DESTINATION "${CURRENT_PACKAGES_DIR}/debug/lib")
-        set(LJIT_LIBDIR "debug/lib")
-        configure_file("${CMAKE_CURRENT_LIST_DIR}/luajit.pc.win.in" "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/luajit.pc" @ONLY)
-
-        if (VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-            file(INSTALL "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg/lua51.dll" DESTINATION "${CURRENT_PACKAGES_DIR}/debug/bin")
-            file(COPY "${CURRENT_PACKAGES_DIR}/debug/bin/lua51.dll" DESTINATION "${CURRENT_PACKAGES_DIR}/debug/tools")
-        endif()
-        vcpkg_copy_pdbs()
-    else()
-        vcpkg_execute_build_process(
-            COMMAND make -j${VCPKG_CONCURRENCY} -f ${SOURCE_PATH}/Makefile ${MACOSX_DEPLOYMENT_TARGET} clean
-            WORKING_DIRECTORY ${SOURCE_PATH}
-            LOGNAME clean-${TARGET_TRIPLET}-debug
-        )
-        vcpkg_execute_build_process(
-            COMMAND make -j${VCPKG_CONCURRENCY} -f ${SOURCE_PATH}/Makefile ${MACOSX_DEPLOYMENT_TARGET} ${MACOSX_ARCHITECTURES} PREFIX=${CURRENT_PACKAGES_DIR}/debug CCDEBUG=-g3 CFLAGS=-O0 BUILDMODE=${VCPKG_LIBRARY_LINKAGE} install
-            WORKING_DIRECTORY ${SOURCE_PATH}
-            LOGNAME build-${TARGET_TRIPLET}-debug
-        )
-        file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
-        file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
-        file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/lib/lua")
-        file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/bin")
-        vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/luajit.pc" "multilib=lib" "multilib=debug/lib")
+    vcpkg_list(SET make_options "EXECUTABLE_SUFFIX=${VCPKG_TARGET_EXECUTABLE_SUFFIX}")
+    set(strip_options "") # cf. src/Makefile
+    if(VCPKG_TARGET_IS_OSX)
+        vcpkg_list(APPEND make_options "TARGET_SYS=Darwin")
+        set(strip_options " -x")
+    elseif(VCPKG_TARGET_IS_IOS)
+        vcpkg_list(APPEND make_options "TARGET_SYS=iOS")
+        set(strip_options " -x")
+    elseif(VCPKG_TARGET_IS_LINUX)
+        vcpkg_list(APPEND make_options "TARGET_SYS=Linux")
+    elseif(VCPKG_TARGET_IS_WINDOWS)
+        vcpkg_list(APPEND make_options "TARGET_SYS=Windows")
+        set(strip_options " --strip-unneeded")
     endif()
-endif()
 
-if (NOT VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL release)
-    message(STATUS "Building ${TARGET_TRIPLET}-rel")
-    file(REMOVE_RECURSE "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel")
-    file(MAKE_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel")
-
-    if (VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
-        vcpkg_execute_required_process_repeat(
-            COUNT 1
-            COMMAND "${SOURCE_PATH}/src/msvcbuild.bat" ${SOURCE_PATH}/src ${VCPKG_CRT_LINKAGE} ${LJIT_STATIC}
-            WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel"
-            LOGNAME build-${TARGET_TRIPLET}-rel
-        )
-
-        file(INSTALL "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/luajit.exe" DESTINATION "${CURRENT_PACKAGES_DIR}/tools")
-        file(INSTALL "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/lua51.lib" DESTINATION "${CURRENT_PACKAGES_DIR}/lib")
-        set(LJIT_LIBDIR "lib")
-        configure_file("${CMAKE_CURRENT_LIST_DIR}/luajit.pc.win.in" "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/luajit.pc" @ONLY)
-
-        if (VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-            file(INSTALL "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/lua51.dll" DESTINATION "${CURRENT_PACKAGES_DIR}/bin")
-            vcpkg_copy_tools(TOOL_NAMES luajit SEARCH_DIR ${CURRENT_PACKAGES_DIR}/tools AUTO_CLEAN)
-        endif()
-        vcpkg_copy_pdbs()
-    else()
-        vcpkg_execute_build_process(
-            COMMAND make -j${VCPKG_CONCURRENCY} -f ${SOURCE_PATH}/Makefile ${MACOSX_DEPLOYMENT_TARGET} clean
-            WORKING_DIRECTORY ${SOURCE_PATH}
-            LOGNAME clean-${TARGET_TRIPLET}-rel
-        )
-        vcpkg_execute_build_process(
-            COMMAND make -j${VCPKG_CONCURRENCY} -f ${SOURCE_PATH}/Makefile ${MACOSX_DEPLOYMENT_TARGET} ${MACOSX_ARCHITECTURES} PREFIX=${CURRENT_PACKAGES_DIR} CCDEBUG= BUILDMODE=${VCPKG_LIBRARY_LINKAGE} install
-            WORKING_DIRECTORY ${SOURCE_PATH}
-            LOGNAME build-${TARGET_TRIPLET}-rel
-        )
-        file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/lua" "${CURRENT_PACKAGES_DIR}/lib/lua")
+    set(dasm_archs "")
+    if("buildvm-32" IN_LIST FEATURES)
+        string(APPEND dasm_archs " arm x86")
     endif()
+    if("buildvm-64" IN_LIST FEATURES)
+        string(APPEND dasm_archs " arm64 x64")
+    endif()
+
+    file(COPY "${CMAKE_CURRENT_LIST_DIR}/configure" DESTINATION "${SOURCE_PATH}")
+    vcpkg_configure_make(SOURCE_PATH "${SOURCE_PATH}"
+        COPY_SOURCE
+        OPTIONS
+            "BUILDMODE=${VCPKG_LIBRARY_LINKAGE}"
+            ${options}
+        OPTIONS_RELEASE
+            "DASM_ARCHS=${dasm_archs}"
+    )
+    vcpkg_install_make(
+        MAKEFILE "Makefile.vcpkg"
+        OPTIONS
+            ${make_options}
+            "TARGET_AR=${VCPKG_DETECTED_CMAKE_AR} rcus"
+            "TARGET_STRIP=${VCPKG_DETECTED_CMAKE_STRIP}${strip_options}"
+    )
 endif()
 
-if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
-    file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/bin" "${CURRENT_PACKAGES_DIR}/debug/bin")
-endif()
+file(REMOVE_RECURSE
+    "${CURRENT_PACKAGES_DIR}/debug/include"
+    "${CURRENT_PACKAGES_DIR}/debug/lib/lua"
+    "${CURRENT_PACKAGES_DIR}/debug/share"
+    "${CURRENT_PACKAGES_DIR}/lib/lua"
+    "${CURRENT_PACKAGES_DIR}/share/lua"
+    "${CURRENT_PACKAGES_DIR}/share/man"
+)
 
-file(INSTALL "${SOURCE_PATH}/src/lua.h"      DESTINATION "${CURRENT_PACKAGES_DIR}/include/${PORT}")
-file(INSTALL "${SOURCE_PATH}/src/luajit.h"   DESTINATION "${CURRENT_PACKAGES_DIR}/include/${PORT}")
-file(INSTALL "${SOURCE_PATH}/src/luaconf.h"  DESTINATION "${CURRENT_PACKAGES_DIR}/include/${PORT}")
-file(INSTALL "${SOURCE_PATH}/src/lualib.h"   DESTINATION "${CURRENT_PACKAGES_DIR}/include/${PORT}")
-file(INSTALL "${SOURCE_PATH}/src/lauxlib.h"  DESTINATION "${CURRENT_PACKAGES_DIR}/include/${PORT}")
-file(INSTALL "${SOURCE_PATH}/src/lua.hpp"    DESTINATION "${CURRENT_PACKAGES_DIR}/include/${PORT}")
+file(REMOVE "${CURRENT_PACKAGES_DIR}/bin/luajit-symlink" "${CURRENT_PACKAGES_DIR}/debug/bin/luajit-symlink")
+vcpkg_copy_tools(TOOL_NAMES luajit AUTO_CLEAN)
 
 vcpkg_fixup_pkgconfig()
 
-file(INSTALL "${SOURCE_PATH}/COPYRIGHT" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/COPYRIGHT")

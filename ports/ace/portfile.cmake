@@ -1,5 +1,3 @@
-vcpkg_minimum_required(VERSION 2022-10-12)
-
 # Using zip archive under Linux would cause sh/perl to report "No such file or directory" or "bad interpreter"
 # when invoking `prj_install.pl`.
 # So far this issue haven't yet be triggered under WSL 1 distributions. Not sure the root cause of it.
@@ -9,15 +7,15 @@ if("tao" IN_LIST FEATURES)
     # Don't change to vcpkg_from_github! This points to a release and not an archive
     vcpkg_download_distfile(ARCHIVE
         URLS "https://github.com/DOCGroup/ACE_TAO/releases/download/ACE%2BTAO-${VERSION_DIRECTORY}/ACE%2BTAO-src-${VERSION}.tar.gz"
-        FILENAME "ACE-TAO-${VERSION}.tar.gz"
-        SHA512 a40a4761d396f1e7dc96287075810a3d874794f56057cf1f18b2bd27fbb89e024c2926890fd0a8efe825c31865c382b91e90477d78cba64877b93ba9909b7da2
+        FILENAME "ACE-TAO-src-${VERSION}.tar.gz"
+        SHA512 cf582fc5cb5e1df33ade341c73f841d84048b804a354a5095ef2eb44bc32e3edcb42e9335bcabff3363582552ce8e4c64d96625b2ec20cf6e5b346320b3f422c
     )
 else()
     # Don't change to vcpkg_from_github! This points to a release and not an archive
     vcpkg_download_distfile(ARCHIVE
         URLS "https://github.com/DOCGroup/ACE_TAO/releases/download/ACE%2BTAO-${VERSION_DIRECTORY}/ACE-src-${VERSION}.tar.gz"
         FILENAME "ACE-src-${VERSION}.tar.gz"
-        SHA512 716b27e347e013b866fa08f7ab182c60faf108e8000089b90717db86d6dd92d8c7e776d4850be27c5f50c8e31543f573ce19466efcd9b4b7bc8836eec5447860
+        SHA512 137b0310b5b134939446e53ebe4a1af151b4bf272b85327733e4a6142ec5b424d78c61dee90dfb1f645d707ba19935a850250a82156973b0da2de121da148b6a
     )
 endif()
 
@@ -65,11 +63,8 @@ vcpkg_find_acquire_program(PERL)
 get_filename_component(PERL_PATH ${PERL} DIRECTORY)
 vcpkg_add_to_path("${PERL_PATH}")
 
-if (TRIPLET_SYSTEM_ARCH MATCHES "x86")
-    set(MSBUILD_PLATFORM "Win32")
-else ()
-    set(MSBUILD_PLATFORM "${TRIPLET_SYSTEM_ARCH}")
-endif()
+vcpkg_cmake_get_vars(cmake_vars_file)
+include("${cmake_vars_file}")
 
 # Add ace/config.h file
 # see https://htmlpreview.github.io/?https://github.com/DOCGroup/ACE_TAO/blob/master/ACE/ACE-INSTALL.html
@@ -95,6 +90,13 @@ elseif(VCPKG_TARGET_IS_OSX)
   set(SOLUTION_TYPE gnuace)
   set(config_h_contents "#include \"ace/config-macosx.h\"\n")
   file(WRITE "${ACE_ROOT}/include/makeinclude/platform_macros.GNU" "include $(ACE_ROOT)/include/makeinclude/platform_macosx.GNU")
+elseif (VCPKG_TARGET_IS_ANDROID)
+  set(SOLUTION_TYPE gnuace)
+  set(config_h_contents "#include \"ace/config-android.h\"\n")
+  file(WRITE "${ACE_ROOT}/include/makeinclude/platform_macros.GNU" "include $(ACE_ROOT)/include/makeinclude/platform_android.GNU")
+  set(ENV{ANDROID_ABI} "${VCPKG_DETECTED_CMAKE_ANDROID_ARCH_ABI}")
+  set(ENV{android_ndk} "${VCPKG_DETECTED_CMAKE_ANDROID_NDK}")
+  set(ENV{android_api} "${VCPKG_DETECTED_CMAKE_SYSTEM_VERSION}")
 endif()
 
 if("wchar" IN_LIST FEATURES)
@@ -122,28 +124,10 @@ if("xml" IN_LIST FEATURES)
 endif()
 
 if(VCPKG_TARGET_IS_WINDOWS)
-  if("tao" IN_LIST FEATURES OR "xml" IN_LIST FEATURES)
-    file(WRITE "${SOURCE_PATH}/Directory.Build.props" "<?xml version=\"1.0\" encoding=\"utf-8\"?>
-                                                     <Project xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">
-                                                     <ItemDefinitionGroup>
-                                                     <ClCompile>
-                                                     <AdditionalOptions>/MP</AdditionalOptions>
-                                                     <AdditionalIncludeDirectories>${ACE_ROOT}</AdditionalIncludeDirectories>
-                                                     </ClCompile>
-                                                     <Link>
-                                                     <AdditionalLibraryDirectories>${CURRENT_PACKAGES_DIR}/lib;${CURRENT_PACKAGES_DIR}/debug/lib;${CURRENT_INSTALLED_DIR}/lib;${CURRENT_INSTALLED_DIR}/debug/lib</AdditionalLibraryDirectories>
-                                                     </Link>
-                                                     </ItemDefinitionGroup>
-                                                     </Project>")
-  endif()
-
   file(RELATIVE_PATH PROJECT_SUBPATH "${SOURCE_PATH}" "${WORKSPACE}.sln")
-  vcpkg_install_msbuild(
+  vcpkg_msbuild_install(
     SOURCE_PATH "${SOURCE_PATH}"
-    PROJECT_SUBPATH ${PROJECT_SUBPATH}
-    LICENSE_SUBPATH COPYING
-    PLATFORM ${MSBUILD_PLATFORM}
-    SKIP_CLEAN
+    PROJECT_SUBPATH "${PROJECT_SUBPATH}"
   )
 
   # ACE itself does not define an install target, so it is not clear which
@@ -165,8 +149,7 @@ if(VCPKG_TARGET_IS_WINDOWS)
     endforeach()
   endfunction()
 
-  get_filename_component(SOURCE_PATH_SUFFIX "${SOURCE_PATH}" NAME)
-  set(SOURCE_COPY_PATH "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/${SOURCE_PATH_SUFFIX}")
+  set(SOURCE_COPY_PATH "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel")
 
   # Install headers in subdirectory
   set(ACE_INCLUDE_FOLDERS
@@ -281,12 +264,9 @@ if(VCPKG_TARGET_IS_WINDOWS)
 
   if("xml" IN_LIST FEATURES)
     file(RELATIVE_PATH PROJECT_SUBPATH_XML "${SOURCE_PATH}" "${ACE_ROOT}/ACEXML/ACEXML.sln")
-    vcpkg_install_msbuild(
+    vcpkg_msbuild_install(
       SOURCE_PATH "${SOURCE_PATH}"
-      PROJECT_SUBPATH ${PROJECT_SUBPATH_XML}
-      LICENSE_SUBPATH COPYING
-      PLATFORM ${MSBUILD_PLATFORM}
-      SKIP_CLEAN
+      PROJECT_SUBPATH "${PROJECT_SUBPATH_XML}"
     )
 
     set(ACEXML_INCLUDE_FOLDERS "ACEXML/common"
@@ -304,9 +284,7 @@ if(VCPKG_TARGET_IS_WINDOWS)
         "${CURRENT_PACKAGES_DIR}/debug/bin/ACEXML_XML_Svc_Conf_Parserd_dll.pdb")
     endif()
   endif()
-
-  vcpkg_clean_msbuild()
-elseif(VCPKG_TARGET_IS_LINUX OR VCPKG_TARGET_IS_OSX)
+elseif(VCPKG_TARGET_IS_LINUX OR VCPKG_TARGET_IS_OSX OR VCPKG_TARGET_IS_ANDROID)
   FIND_PROGRAM(MAKE make)
   IF (NOT MAKE)
     MESSAGE(FATAL_ERROR "MAKE not found")
@@ -326,6 +304,7 @@ elseif(VCPKG_TARGET_IS_LINUX OR VCPKG_TARGET_IS_OSX)
   get_filename_component(WORKING_DIR "${WORKSPACE}" DIRECTORY)
   set(ENV{PWD} "${WORKING_DIR}")
 
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
   message(STATUS "Building ${TARGET_TRIPLET}-dbg")
   vcpkg_execute_build_process(
     COMMAND make ${_ace_makefile_macros} "debug=1" "optimize=0" "-j${VCPKG_CONCURRENCY}"
@@ -376,7 +355,9 @@ elseif(VCPKG_TARGET_IS_LINUX OR VCPKG_TARGET_IS_OSX)
       LOGNAME realclean-xml-${TARGET_TRIPLET}-dbg
     )
   endif()
+endif()
 
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
   message(STATUS "Building ${TARGET_TRIPLET}-rel")
   vcpkg_execute_build_process(
     COMMAND make ${_ace_makefile_macros} "-j${VCPKG_CONCURRENCY}"
@@ -409,15 +390,16 @@ elseif(VCPKG_TARGET_IS_LINUX OR VCPKG_TARGET_IS_OSX)
     file(RENAME "${CURRENT_PACKAGES_DIR}/bin" "${CURRENT_PACKAGES_DIR}/tools/${PORT}")
   endif()
   message(STATUS "Packaging ${TARGET_TRIPLET}-rel done")
+endif()
+
   # Restore `PWD` environment variable
   set($ENV{PWD} _prev_env)
-
-  # Handle copyright
-  file(INSTALL "${ACE_ROOT}/COPYING" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
 
   file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/ace/bin/MakeProjectCreator")
   file(REMOVE "${CURRENT_PACKAGES_DIR}/share/ace/ace-devel.sh")
   file(REMOVE "${CURRENT_PACKAGES_DIR}/share/tao/tao-devel.sh")
 endif()
+
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/COPYING")
 
 vcpkg_fixup_pkgconfig()

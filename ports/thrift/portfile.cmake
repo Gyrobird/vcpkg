@@ -9,15 +9,18 @@ endif()
 vcpkg_find_acquire_program(FLEX)
 vcpkg_find_acquire_program(BISON)
 
-vcpkg_from_github(
-    OUT_SOURCE_PATH SOURCE_PATH
-    REPO apache/thrift
-    REF 2a93df80f27739ccabb5b885cb12a8dc7595ecdf #0.16.0
-    SHA512 aed4f60b8a4eca5b4bce26f6f29d1178684d2b4e6de290ab1e696ac78a9f85d941afe5dca99d1d22d640371ad538b930cf445f9f899a2e322f39b0cceec307a3
-    HEAD_REF master
+vcpkg_download_distfile(ARCHIVE
+    URLS "https://archive.apache.org/dist/thrift/${VERSION}/thrift-${VERSION}.tar.gz"
+    FILENAME "thrift-${VERSION}.tar.gz"
+    SHA512 beb37ee2a295fae7df12cce6449c92799076771bae515fafcc790a62ac6e76ac5584f102315d466b8f5f98e236c9dc4a244695bdcd9f1392d6e9a13d365ddadc
+)
+
+vcpkg_extract_source_archive(
+    SOURCE_PATH
+    ARCHIVE "${ARCHIVE}"
     PATCHES
-      "correct-paths.patch"
-      "pc-suffix.patch"
+        pc-suffix.patch
+        fix_missing_quotes_in_config_and_bin_path.patch
 )
 
 if (VCPKG_TARGET_IS_OSX)
@@ -83,7 +86,7 @@ if(COMPILER)
     vcpkg_copy_tools(TOOL_NAMES thrift AUTO_CLEAN)
 endif()
 
-file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")
 
 if ("${VCPKG_LIBRARY_LINKAGE}" STREQUAL "static")
     file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/bin")

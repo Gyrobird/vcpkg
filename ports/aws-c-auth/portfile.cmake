@@ -2,8 +2,8 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO awslabs/aws-c-auth
     REF "v${VERSION}"
-    SHA512 f3b06d24d1a27a0cf548545a57acf3ae1c66ac09ed6c242f206c0237da7720f913726879bd26cbf8ff389ca935dd321a6a2228d0fde9d054322453e876bf30d2
-    HEAD_REF master
+    SHA512 03d39cf5b03a08478cdce9decf33166ada7235b3ff2eb9ea657724dbadacd08bea2bc6322bbf67136270ce9a8be8010f0bb845f1ed650b2b93f492351805ac34
+    HEAD_REF main
 )
 
 vcpkg_cmake_configure(
@@ -16,8 +16,8 @@ vcpkg_cmake_configure(
 vcpkg_cmake_install()
 
 string(REPLACE "dynamic" "shared" subdir "${VCPKG_LIBRARY_LINKAGE}")
-vcpkg_cmake_config_fixup(CONFIG_PATH "lib/${PORT}/cmake/${subdir}" DO_NOT_DELETE_PARENT_CONFIG_PATH)
-vcpkg_cmake_config_fixup(CONFIG_PATH "lib/${PORT}/cmake")
+vcpkg_cmake_config_fixup(CONFIG_PATH "lib/cmake/${PORT}/${subdir}" DO_NOT_DELETE_PARENT_CONFIG_PATH)
+vcpkg_cmake_config_fixup(CONFIG_PATH "lib/cmake/${PORT}")
 vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/share/${PORT}/${PORT}-config.cmake" [[/${type}/]] "/")
 
 file(REMOVE_RECURSE

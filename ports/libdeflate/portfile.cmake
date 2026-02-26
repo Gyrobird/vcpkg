@@ -2,7 +2,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO ebiggers/libdeflate
     REF "v${VERSION}"
-    SHA512 4e2c0f78e55befc8cbc390722ee5e9e7662315eaafe1979e300972990acf4afffc32a1220cca7a6e944d551a430dd13d36b40066dfe8141789de1a5418ac620f
+    SHA512 fa02fa0a6d241d3f71cf4238a3ac58968cbea0b66613c1647d6eea575379d60e93f4647f8b3921e8c31322e20521aa9953213d5465f7d10a27c57bdd7186d318
     HEAD_REF master
     PATCHES
         remove_wrong_c_flags_modification.diff
@@ -12,8 +12,8 @@ vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
     FEATURES
         compression   LIBDEFLATE_COMPRESSION_SUPPORT
         decompression LIBDEFLATE_DECOMPRESSION_SUPPORT
-        gzip          LIBDEFLATE_ZLIB_SUPPORT
-        zlib          LIBDEFLATE_GZIP_SUPPORT
+        gzip          LIBDEFLATE_GZIP_SUPPORT
+        zlib          LIBDEFLATE_ZLIB_SUPPORT
 )
 
 string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "static" LIBDEFLATE_BUILD_STATIC)
@@ -31,6 +31,17 @@ vcpkg_cmake_configure(
 vcpkg_cmake_install()
 vcpkg_cmake_config_fixup(CONFIG_PATH "lib/cmake/libdeflate")
 vcpkg_fixup_pkgconfig()
+
+if(VCPKG_TARGET_IS_WINDOWS)
+    if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
+        vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/libdeflate.h" "defined(LIBDEFLATE_DLL)" "1")
+    elseif(NOT VCPKG_TARGET_IS_MINGW)
+        vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/lib/pkgconfig/libdeflate.pc" " -ldeflate" " -ldeflatestatic")
+        if(NOT VCPKG_BUILD_TYPE)
+            vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/libdeflate.pc" " -ldeflate" " -ldeflatestatic")
+        endif()
+    endif()
+endif()
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/COPYING")

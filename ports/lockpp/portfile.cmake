@@ -1,15 +1,28 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO Soundux/lockpp
-    REF v1.0.2
-    SHA512 6d92d3bbcbad3e2afd844ab95526e1eb49a7722d0d9d972ff85df561bbb9dc0b7a8aa5c83847f6832a806e52dde427ec0bcd11570b095d9cce7e35b3717e1f51
+    REPO Curve/lockpp
+    REF "v${VERSION}"
+    SHA512 0581718dc2451d3cc62f2d0443f52a1adc95fe7a8ee859bd9cca78d68aa029ce7bc9e5387eca24f1b5fe44fc4af3ec662426c471b16e5ad0f29aa83ae0d2c4c1
     HEAD_REF master
+    PATCHES
+        remove-cpm.patch
 )
 
-vcpkg_cmake_configure(SOURCE_PATH ${SOURCE_PATH})
+# Replace CPM and download PackageProject directly to avoid issues with FETCHCONTENT_FULLY_DISCONNECTED
+vcpkg_from_github(
+    OUT_SOURCE_PATH PACKAGE_PROJECT_PATH
+    REPO TheLartians/PackageProject.cmake
+    REF "v1.13.0"
+    SHA512 3cf0523bddc213f206ed0ca57803550cb7db9e293392d3741138be47f49d9027ef517e1656235a349a62b492d35c3fc677714dc00afe59e2d36144a9689cfa8f
+    HEAD_REF master
+)
+file(RENAME "${PACKAGE_PROJECT_PATH}" "${SOURCE_PATH}/cmake/packageproject.cmake")
 
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+)
 vcpkg_cmake_install()
-
+vcpkg_cmake_config_fixup(CONFIG_PATH "share/cmake/lockpp-${VERSION}")
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug")
-file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")

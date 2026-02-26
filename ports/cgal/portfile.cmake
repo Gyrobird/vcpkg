@@ -1,19 +1,12 @@
-# Header only
-vcpkg_buildpath_length_warning(37)
+set(VCPKG_BUILD_TYPE release)  # header-only
 
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO CGAL/cgal
-    REF v5.5.2
-    SHA512 0928081656cf52254f70a96aeaf59286e7603b5c741c2056c1ac5f3d432dba7c931ae4cd5abf77af71924e0d043a8699200ac3737c53e91d207770e6d3e98999
+    REF v${VERSION}
+    SHA512 682a028aee951b631827ede9a2fe7cacebbefdf0b2cc63c25c43828eb1f749800e995079c1655b820db41157e03c9cc4286d68d66b9bb7e97a7522f6d0fae05f
     HEAD_REF master
 )
-
-vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
-    FEATURES
-        qt WITH_CGAL_Qt5
-)
-
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
@@ -26,7 +19,6 @@ vcpkg_cmake_configure(
     MAYBE_UNUSED_VARIABLES
         CGAL_BUILD_THREE_DOC
         CGAL_HEADER_ONLY
-        WITH_CGAL_Qt5
 )
 
 vcpkg_cmake_install()

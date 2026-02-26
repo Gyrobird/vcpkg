@@ -2,12 +2,12 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO OSGeo/PROJ
     REF "${VERSION}"
-    SHA512 a48980b94b6c68738dd5ab70a1de6aa42f325fd612155623195a14774caadcaceff08035c01696458d3dd706b2277d89ea093949a1855fafa9951c59821cb1cb
+    SHA512 c5ca62e34612a764cf5cef15e7313ac9e3dccf698e045ac09f8d24e4c109ebf9ee207bcd9d5d698b3f6ecb35d98ec621672f58d130e0eefce74705c3152f374c
     HEAD_REF master
     PATCHES
-        fix-win-output-name.patch
         fix-proj4-targets-cmake.patch
-        remove-doc.patch
+        remove_toolset_restriction.patch
+        sqlite.diff
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
@@ -19,8 +19,7 @@ vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
 
 vcpkg_list(SET TOOL_NAMES cct cs2cs geod gie invgeod invproj proj projinfo projsync)
 if("tools" IN_LIST FEATURES AND NOT "net" IN_LIST FEATURES)
-    set(BUILD_PROJSYNC OFF)
-    vcpkg_list(APPEND FEATURE_OPTIONS -DBUILD_PROJSYNC=${BUILD_PROJSYNC})
+    vcpkg_list(APPEND FEATURE_OPTIONS -DBUILD_PROJSYNC=OFF)
     vcpkg_list(REMOVE_ITEM TOOL_NAMES projsync)
 endif()
 
@@ -32,12 +31,23 @@ vcpkg_cmake_configure(
         ${FEATURE_OPTIONS}
         -DNLOHMANN_JSON=external
         -DBUILD_TESTING=OFF
+        -DBUILD_EXAMPLES=OFF
         "-DEXE_SQLITE3=${EXE_SQLITE3}"
+        -DPROJ_DATA_ENV_VAR_TRIED_LAST=ON
+        -DEMBED_PROJ_DATA_PATH=OFF
     OPTIONS_DEBUG
         -DBUILD_APPS=OFF
 )
 
 vcpkg_cmake_install()
+vcpkg_copy_pdbs()
+vcpkg_cmake_config_fixup(PACKAGE_NAME proj4 CONFIG_PATH lib/cmake/proj4 DO_NOT_DELETE_PARENT_CONFIG_PATH)
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/proj)
+vcpkg_fixup_pkgconfig()
+
+if(NOT DEFINED VCPKG_BUILD_TYPE AND VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/proj.pc" " -lproj" " -lproj_d")
+endif()
 
 if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
     # Enforce consistency with src/lib_proj.cmake build time configuration.
@@ -47,22 +57,16 @@ if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
     )
 endif()
 
-vcpkg_cmake_config_fixup(PACKAGE_NAME proj4 CONFIG_PATH lib/cmake/proj4 DO_NOT_DELETE_PARENT_CONFIG_PATH)
-vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/proj)
-
 if ("tools" IN_LIST FEATURES)
     vcpkg_copy_tools(TOOL_NAMES ${TOOL_NAMES} AUTO_CLEAN)
 endif ()
 
-file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
-file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
-
-vcpkg_copy_pdbs()
-
-vcpkg_fixup_pkgconfig()
-if(NOT DEFINED VCPKG_BUILD_TYPE AND VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
-    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/proj.pc" " -lproj" " -lproj_d")
-endif()
+file(REMOVE_RECURSE
+    "${CURRENT_PACKAGES_DIR}/debug/include"
+    "${CURRENT_PACKAGES_DIR}/debug/share"
+    "${CURRENT_PACKAGES_DIR}/share/doc"
+    "${CURRENT_PACKAGES_DIR}/share/man"
+)
 
 file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
-file(INSTALL "${SOURCE_PATH}/COPYING" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/COPYING")

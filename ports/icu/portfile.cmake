@@ -1,41 +1,47 @@
-vcpkg_minimum_required(VERSION 2022-10-12) # for ${VERSION}
-string(REGEX MATCH "^[0-9]*" ICU_VERSION_MAJOR "${VERSION}")
-string(REPLACE "." "_" VERSION2 "${VERSION}")
-string(REPLACE "." "-" VERSION3 "${VERSION}")
-
 vcpkg_download_distfile(
     ARCHIVE
-    URLS "https://github.com/unicode-org/icu/releases/download/release-${VERSION3}/icu4c-${VERSION2}-src.tgz"
-    FILENAME "icu4c-${VERSION2}-src.tgz"
-    SHA512 848c341b37c0ff077e34a95d92c6200d5aaddd0ee5e06134101a74e04deb08256a5e817c8aefab020986abe810b7827dd7b2169a60dacd250c298870518dcae8
+    URLS "https://github.com/unicode-org/icu/releases/download/release-${VERSION}/icu4c-${VERSION}-sources.tgz"
+    FILENAME "icu4c-${VERSION}-sources.tgz"
+    SHA512 92feddfe81c57336f386c7cbc9f6d976bf349db148a77a247c4559676f51116115c8c52c4d907feb50933f72ab75fd8e48be092bf9c8ca33a3e8fabc9372a5d6
 )
 
 vcpkg_extract_source_archive(SOURCE_PATH
     ARCHIVE "${ARCHIVE}"
     PATCHES
-        disable-escapestr-tool.patch
-        remove-MD-from-configure.patch
-        fix_parallel_build_on_windows.patch
-        fix-extra.patch
-        mingw-dll-install.patch
         disable-static-prefix.patch # https://gitlab.kitware.com/cmake/cmake/-/issues/16617; also mingw.
-        fix-win-build.patch
+        fix_bsd_and_solaris.patch
+        fix_parallel_build_on_windows.patch
+        mh-darwin.patch
+        mh-mingw.patch
+        mh-msys-msvc.patch
+        subdirs.patch
+        vcpkg-cross-data.patch
 )
 
 vcpkg_find_acquire_program(PYTHON3)
 set(ENV{PYTHON} "${PYTHON3}")
 
-if(VCPKG_TARGET_IS_WINDOWS)
-    list(APPEND CONFIGURE_OPTIONS --enable-icu-build-win)
+vcpkg_list(SET CONFIGURE_OPTIONS)
+vcpkg_list(SET BUILD_OPTIONS)
+
+if(VCPKG_TARGET_IS_EMSCRIPTEN)
+    vcpkg_list(APPEND CONFIGURE_OPTIONS --disable-extras icu_cv_host_frag=mh-linux)
+    vcpkg_list(APPEND BUILD_OPTIONS "\"PKGDATA_OPTS=--without-assembly -O ../data/icupkg.inc\"")
+elseif(VCPKG_TARGET_IS_UWP)
+    vcpkg_list(APPEND CONFIGURE_OPTIONS --disable-extras ac_cv_func_tzset=no ac_cv_func__tzset=no)
+    string(APPEND VCPKG_C_FLAGS " -DU_PLATFORM_HAS_WINUWP_API=1")
+    string(APPEND VCPKG_CXX_FLAGS " -DU_PLATFORM_HAS_WINUWP_API=1")
+    vcpkg_list(APPEND BUILD_OPTIONS "\"PKGDATA_OPTS=--windows-uwp-build -O ../data/icupkg.inc\"")
+elseif(VCPKG_TARGET_IS_OSX AND VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
+    vcpkg_list(APPEND CONFIGURE_OPTIONS --enable-rpath)
+    if(DEFINED CMAKE_INSTALL_NAME_DIR)
+        vcpkg_list(APPEND BUILD_OPTIONS "ID_PREFIX=${CMAKE_INSTALL_NAME_DIR}")
+    endif()
 endif()
 
-list(APPEND CONFIGURE_OPTIONS --disable-samples --disable-tests --disable-layoutex)
-
-list(APPEND CONFIGURE_OPTIONS_RELEASE --disable-debug --enable-release)
-list(APPEND CONFIGURE_OPTIONS_DEBUG  --enable-debug --disable-release)
-
-set(RELEASE_TRIPLET ${TARGET_TRIPLET}-rel)
-set(DEBUG_TRIPLET ${TARGET_TRIPLET}-dbg)
+if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
+    list(APPEND CONFIGURE_OPTIONS ac_cv_lib_m_floor=no)
+endif()
 
 if("tools" IN_LIST FEATURES)
   list(APPEND CONFIGURE_OPTIONS --enable-tools)
@@ -52,92 +58,22 @@ elseif(VCPKG_CROSSCOMPILING)
     list(APPEND CONFIGURE_OPTIONS "--with-cross-build=${_VCPKG_TOOL_PATH}")
 endif()
 
-vcpkg_configure_make(
-    SOURCE_PATH "${SOURCE_PATH}"
-    AUTOCONFIG
-    PROJECT_SUBPATH source
-    ADDITIONAL_MSYS_PACKAGES autoconf-archive
-    OPTIONS ${CONFIGURE_OPTIONS}
-    OPTIONS_RELEASE ${CONFIGURE_OPTIONS_RELEASE}
-    OPTIONS_DEBUG ${CONFIGURE_OPTIONS_DEBUG}
-    DETERMINE_BUILD_TRIPLET
+vcpkg_make_configure(
+    SOURCE_PATH "${SOURCE_PATH}/source"
+    # AUTORECONF # needs Autoconf version 2.72
+    OPTIONS
+        ${CONFIGURE_OPTIONS}
+        --disable-samples
+        --disable-tests
+        --disable-layoutex
+    OPTIONS_RELEASE
+        --disable-debug
+        --enable-release
+    OPTIONS_DEBUG
+        --enable-debug
+        --disable-release
 )
-
-if(VCPKG_TARGET_IS_OSX AND VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
-
-    vcpkg_build_make()
-    # remove this block if https://unicode-org.atlassian.net/browse/ICU-21458
-    # is resolved and use the configure script instead
-    if(DEFINED CMAKE_INSTALL_NAME_DIR)
-        set(ID_PREFIX "${CMAKE_INSTALL_NAME_DIR}")
-    else()
-        set(ID_PREFIX "@rpath")
-    endif()
-
-    # install_name_tool may be missing if cross-compiling
-    find_program(
-        INSTALL_NAME_TOOL
-        install_name_tool
-        HINTS /usr/bin /Library/Developer/CommandLineTools/usr/bin/
-        DOC "Absolute path of install_name_tool"
-        REQUIRED
-    )
-
-    message(STATUS "setting rpath prefix for macOS dynamic libraries")
-
-    if("tools" IN_LIST FEATURES)
-        set(LIBICUTU_RPATH "libicutu")
-    endif()
-    # add ID_PREFIX to libicudata libicui18n libicuio libicutu libicuuc
-    foreach(LIB_NAME IN ITEMS libicudata libicui18n libicuio ${LIBICUTU_RPATH} libicuuc)
-        vcpkg_execute_build_process(
-            COMMAND "${INSTALL_NAME_TOOL}" -id "${ID_PREFIX}/${LIB_NAME}.${ICU_VERSION_MAJOR}.dylib"
-            "${LIB_NAME}.${VERSION}.dylib"
-            WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${RELEASE_TRIPLET}/lib"
-            LOGNAME "make-build-fix-rpath-${RELEASE_TRIPLET}"
-        )
-    endforeach()
-
-    # add ID_PREFIX to libicui18n libicuio libicutu dependencies
-    foreach(LIB_NAME IN ITEMS libicui18n libicuio)
-        vcpkg_execute_build_process(
-            COMMAND "${INSTALL_NAME_TOOL}" -change "libicuuc.${ICU_VERSION_MAJOR}.dylib"
-                                                "${ID_PREFIX}/libicuuc.${ICU_VERSION_MAJOR}.dylib"
-                                                "${LIB_NAME}.${VERSION}.dylib"
-            WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${RELEASE_TRIPLET}/lib"
-            LOGNAME "make-build-fix-rpath-${RELEASE_TRIPLET}"
-        )
-        vcpkg_execute_build_process(
-            COMMAND "${INSTALL_NAME_TOOL}" -change "libicudata.${ICU_VERSION_MAJOR}.dylib"
-                                                "${ID_PREFIX}/libicudata.${ICU_VERSION_MAJOR}.dylib"
-                                                "${LIB_NAME}.${VERSION}.dylib"
-            WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${RELEASE_TRIPLET}/lib"
-            LOGNAME "make-build-fix-rpath-${RELEASE_TRIPLET}"
-        )
-    endforeach()
-
-    # add ID_PREFIX to remaining libicuio libicutu dependencies
-    foreach(LIB_NAME libicuio libicutu)
-        vcpkg_execute_build_process(
-            COMMAND "${INSTALL_NAME_TOOL}" -change "libicui18n.${ICU_VERSION_MAJOR}.dylib"
-                                                "${ID_PREFIX}/libicui18n.${ICU_VERSION_MAJOR}.dylib"
-                                                "${LIB_NAME}.${VERSION}.dylib"
-            WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${RELEASE_TRIPLET}/lib"
-            LOGNAME "make-build-fix-rpath-${RELEASE_TRIPLET}"
-        )
-    endforeach()
-
-    # add ID_PREFIX to libicuuc dependencies
-    vcpkg_execute_build_process(
-        COMMAND "${INSTALL_NAME_TOOL}" -change "libicudata.${ICU_VERSION_MAJOR}.dylib"
-                                            "${ID_PREFIX}/libicudata.${ICU_VERSION_MAJOR}.dylib"
-                                            "libicuuc.${VERSION}.dylib"
-        WORKING_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${RELEASE_TRIPLET}/lib"
-        LOGNAME "make-build-fix-rpath-${RELEASE_TRIPLET}"
-    )
-endif()
-
-vcpkg_install_make()
+vcpkg_make_install(OPTIONS ${BUILD_OPTIONS})
 
 file(REMOVE_RECURSE
     "${CURRENT_PACKAGES_DIR}/share"
@@ -174,30 +110,49 @@ file(REMOVE_RECURSE
     "${CURRENT_PACKAGES_DIR}/tools/icu/debug")
 
 # To cross compile, we need some files at specific positions. So lets copy them
-file(GLOB CROSS_COMPILE_DEFS "${CURRENT_BUILDTREES_DIR}/${RELEASE_TRIPLET}/config/icucross.*")
+file(GLOB CROSS_COMPILE_DEFS "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/config/icucross.*")
 file(INSTALL ${CROSS_COMPILE_DEFS} DESTINATION "${CURRENT_PACKAGES_DIR}/tools/${PORT}/config")
 
-file(GLOB RELEASE_DLLS "${CURRENT_PACKAGES_DIR}/lib/*icu*${ICU_VERSION_MAJOR}.dll")
-file(COPY ${RELEASE_DLLS} DESTINATION "${CURRENT_PACKAGES_DIR}/tools/${PORT}/bin")
+if(VCPKG_TARGET_IS_WINDOWS)
+    string(REGEX MATCH "^[0-9]*" ICU_VERSION_MAJOR "${VERSION}")
+    file(GLOB RELEASE_DLLS "${CURRENT_PACKAGES_DIR}/lib/*icu*${ICU_VERSION_MAJOR}.dll")
+    file(COPY ${RELEASE_DLLS} DESTINATION "${CURRENT_PACKAGES_DIR}/tools/${PORT}/bin")
 
-# copy dlls
-file(GLOB RELEASE_DLLS "${CURRENT_PACKAGES_DIR}/lib/*icu*${ICU_VERSION_MAJOR}.dll")
-file(COPY ${RELEASE_DLLS} DESTINATION "${CURRENT_PACKAGES_DIR}/bin")
-if(NOT VCPKG_BUILD_TYPE)
-    file(GLOB DEBUG_DLLS "${CURRENT_PACKAGES_DIR}/debug/lib/*icu*${ICU_VERSION_MAJOR}.dll")
-    file(COPY ${DEBUG_DLLS} DESTINATION "${CURRENT_PACKAGES_DIR}/debug/bin")
+    # copy dlls
+    file(GLOB RELEASE_DLLS "${CURRENT_PACKAGES_DIR}/lib/*icu*${ICU_VERSION_MAJOR}.dll")
+    file(COPY ${RELEASE_DLLS} DESTINATION "${CURRENT_PACKAGES_DIR}/bin")
+    if(NOT VCPKG_BUILD_TYPE)
+        file(GLOB DEBUG_DLLS "${CURRENT_PACKAGES_DIR}/debug/lib/*icu*${ICU_VERSION_MAJOR}.dll")
+        file(COPY ${DEBUG_DLLS} DESTINATION "${CURRENT_PACKAGES_DIR}/debug/bin")
+    endif()
+
+    # remove any remaining dlls in /lib
+    file(GLOB DUMMY_DLLS "${CURRENT_PACKAGES_DIR}/lib/*.dll" "${CURRENT_PACKAGES_DIR}/debug/lib/*.dll")
+    if(DUMMY_DLLS)
+        file(REMOVE ${DUMMY_DLLS})
+    endif()
+
+    vcpkg_copy_pdbs()
 endif()
 
-# remove any remaining dlls in /lib
-file(GLOB DUMMY_DLLS "${CURRENT_PACKAGES_DIR}/lib/*.dll" "${CURRENT_PACKAGES_DIR}/debug/lib/*.dll")
-if(DUMMY_DLLS)
-    file(REMOVE ${DUMMY_DLLS})
-endif()
-
-vcpkg_copy_pdbs()
 vcpkg_fixup_pkgconfig()
+set(cxx_link_libraries "")
+if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+    block(PROPAGATE cxx_link_libraries)
+        vcpkg_cmake_get_vars(cmake_vars_file)
+        include("${cmake_vars_file}")
+        list(REMOVE_ITEM VCPKG_DETECTED_CMAKE_CXX_IMPLICIT_LINK_LIBRARIES ${VCPKG_DETECTED_CMAKE_C_IMPLICIT_LINK_LIBRARIES})
+        list(TRANSFORM VCPKG_DETECTED_CMAKE_CXX_IMPLICIT_LINK_LIBRARIES REPLACE "^([^/]+)\$" "-l\\1")
+        string(JOIN " " cxx_link_libraries ${VCPKG_DETECTED_CMAKE_CXX_IMPLICIT_LINK_LIBRARIES})
+    endblock()
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/lib/pkgconfig/icu-uc.pc" "baselibs = " "baselibs = ${cxx_link_libraries} ")
+    if(NOT VCPKG_BUILD_TYPE)
+        vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/icu-uc.pc" "baselibs = " "baselibs = ${cxx_link_libraries} ")
+    endif()
+endif()
 
-vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/tools/icu/bin/icu-config" "${CURRENT_INSTALLED_DIR}" "`dirname $0`/../../../")
+vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/tools/icu/bin/icu-config" "${CURRENT_INSTALLED_DIR}" "`dirname $0`/../../../" IGNORE_UNCHANGED)
+vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/tools/icu/bin/icu-config" "${CURRENT_HOST_INSTALLED_DIR}" "`dirname $0`/../../../../${_HOST_TRIPLET}/" IGNORE_UNCHANGED)
 
-file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
-file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/vcpkg-cmake-wrapper.cmake" "${CURRENT_PACKAGES_DIR}/share/${PORT}/vcpkg-cmake-wrapper.cmake" @ONLY)
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")

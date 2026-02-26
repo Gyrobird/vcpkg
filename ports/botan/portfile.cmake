@@ -1,18 +1,17 @@
-vcpkg_minimum_required(VERSION 2022-10-12) # for ${VERSION}
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO randombit/botan
     REF "${VERSION}"
-    SHA512 0f99ef4026e5180dd65dc0e935ba2cabaf750862c651699294b3521053463b7e65a90847fef6f0d640eb9f9eb5efce64b13e999aa9c215310998817d13bd5332
+    SHA512 83e8d9c877a7e1c253efb94953758dde141ef23f74c727294c3a9af60db02401e1aef92368908b297bad1fc005d155e6c63bd726ccc48ea831f46cc5c1915633
     HEAD_REF master
     PATCHES
-        fix-generate-build-path.patch
         embed-debug-info.patch
-        arm64-windows.patch
         pkgconfig.patch
         verbose-install.patch
         configure-zlib.patch
-        fix-objectfile-list.patch # https://github.com/randombit/botan/pull/3069
+        fix_android.patch
+        fix-x86-msvc-amalgamation.patch
+        botan-3.10-illegal-instruction.patch
 )
 file(COPY "${CMAKE_CURRENT_LIST_DIR}/configure" DESTINATION "${SOURCE_PATH}")
 
@@ -32,6 +31,7 @@ endif()
 
 vcpkg_list(SET configure_arguments
     "--distribution-info=vcpkg ${TARGET_TRIPLET}"
+    --disable-cc-tests
     --with-pkg-config
     --link-method=copy
     --with-debug-info
@@ -55,7 +55,9 @@ if("zlib" IN_LIST FEATURES)
     x_vcpkg_pkgconfig_get_modules(LIBS PREFIX "ZLIB" MODULES "zlib" ${pkgconfig_syntax})
 endif()
 
-if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86")
+if(VCPKG_TARGET_IS_EMSCRIPTEN)
+    vcpkg_list(APPEND configure_arguments --cpu=wasm)
+elseif(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86")
     vcpkg_list(APPEND configure_arguments --cpu=x86)
 elseif(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
     vcpkg_list(APPEND configure_arguments --cpu=x86_64)
@@ -67,12 +69,22 @@ else()
     message(FATAL_ERROR "Unsupported architecture")
 endif()
 
+# Allow disabling use of WinSock2 by setting BOTAN_USE_WINSOCK2=OFF in triplet
+# for targeting older Windows versions with missing APIs.
+if(VCPKG_TARGET_IS_WINDOWS AND DEFINED BOTAN_USE_WINSOCK2 AND NOT BOTAN_USE_WINSOCK2)
+    vcpkg_list(APPEND configure_arguments --without-os-features=winsock2)
+endif()
+
 if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
     vcpkg_list(APPEND configure_arguments --os=windows)
 
-    if(VCPKG_DETECTED_CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-        vcpkg_list(APPEND configure_arguments --cc=msvc)
+    if(VCPKG_DETECTED_CMAKE_CXX_COMPILER MATCHES "clang-cl(\.exe)?$")
+        vcpkg_list(APPEND configure_arguments "--cc=clangcl")
+    elseif(VCPKG_DETECTED_CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        vcpkg_list(APPEND configure_arguments "--cc=msvc")
     endif()
+
+    vcpkg_list(APPEND configure_arguments "--extra-cxxflags=${VCPKG_DETECTED_CMAKE_CXX_FLAGS}")
 
     if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
         vcpkg_list(APPEND configure_arguments --enable-shared-library --disable-static-library)
@@ -103,6 +115,11 @@ if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
             "--msvc-runtime=${BOTAN_MSVC_RUNTIME}d"
             "--with-external-libdir=${CURRENT_INSTALLED_DIR}/debug/lib"
             --debug-mode
+        OPTIONS
+            "CXX=\"${VCPKG_DETECTED_CMAKE_CXX_COMPILER}\""
+            "LINKER=\"${VCPKG_DETECTED_CMAKE_LINKER}\""
+            "AR=\"${VCPKG_DETECTED_CMAKE_AR}\""
+            "EXE_LINK_CMD=\"${VCPKG_DETECTED_CMAKE_LINKER}\" ${VCPKG_LINKER_FLAGS}"
         OPTIONS_RELEASE
             "ZLIB_LIBS=${ZLIB_LIBS_RELEASE}"
         OPTIONS_DEBUG
@@ -111,11 +128,17 @@ if(VCPKG_TARGET_IS_WINDOWS AND NOT VCPKG_TARGET_IS_MINGW)
     vcpkg_copy_tools(TOOL_NAMES botan-cli AUTO_CLEAN)
     vcpkg_copy_pdbs()
 else()
-    if(VCPKG_TARGET_IS_MINGW)
+    if(VCPKG_TARGET_IS_ANDROID)
+        vcpkg_list(APPEND configure_arguments --os=android)
+    elseif(VCPKG_TARGET_IS_EMSCRIPTEN)
+        vcpkg_list(APPEND configure_arguments --os=emscripten)
+    elseif(VCPKG_TARGET_IS_MINGW)
         vcpkg_list(APPEND configure_arguments --os=mingw)
     endif()
 
-    if(VCPKG_DETECTED_CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if(VCPKG_TARGET_IS_EMSCRIPTEN)
+        vcpkg_list(APPEND configure_arguments --cc=emcc)
+    elseif(VCPKG_DETECTED_CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         vcpkg_list(APPEND configure_arguments --cc=gcc)
     elseif(VCPKG_DETECTED_CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         vcpkg_list(APPEND configure_arguments --cc=clang)
@@ -143,16 +166,20 @@ else()
             "ZLIB_LIBS_RELEASE=${ZLIB_LIBS_RELEASE}"
             "ZLIB_LIBS_DEBUG=${ZLIB_LIBS_DEBUG}"
     )
-    vcpkg_copy_tools(TOOL_NAMES botan AUTO_CLEAN)
+    if(NOT VCPKG_TARGET_IS_EMSCRIPTEN)
+        vcpkg_copy_tools(TOOL_NAMES botan AUTO_CLEAN)
+    endif()
 endif()
 
-file(RENAME "${CURRENT_PACKAGES_DIR}/include/botan-2/botan" "${CURRENT_PACKAGES_DIR}/include/botan")
+vcpkg_cmake_config_fixup(CONFIG_PATH "lib/cmake/Botan-${VERSION}")
+
+file(RENAME "${CURRENT_PACKAGES_DIR}/include/botan-3/botan" "${CURRENT_PACKAGES_DIR}/include/botan")
 
 if(pkgconfig_requires)
     list(JOIN pkgconfig_requires ", " pkgconfig_requires)
-    file(APPEND "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/botan-2.pc" "Requires.private: ${pkgconfig_requires}")
+    file(APPEND "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/botan-3.pc" "Requires.private: ${pkgconfig_requires}")
     if(NOT VCPKG_BUILD_TYPE)
-        file(APPEND "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/botan-2.pc" "Requires.private: ${pkgconfig_requires}")
+        file(APPEND "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/botan-3.pc" "Requires.private: ${pkgconfig_requires}")
     endif()
 endif()
 vcpkg_fixup_pkgconfig()
@@ -160,12 +187,7 @@ vcpkg_fixup_pkgconfig()
 file(REMOVE_RECURSE
     "${CURRENT_PACKAGES_DIR}/debug/include"
     "${CURRENT_PACKAGES_DIR}/debug/share"
-    "${CURRENT_PACKAGES_DIR}/include/botan-2"
+    "${CURRENT_PACKAGES_DIR}/include/botan-3"
 )
 
-vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/botan/build.h" "#define BOTAN_INSTALL_PREFIX R\"(${CURRENT_PACKAGES_DIR})\"" "")
-vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/botan/build.h" "#define BOTAN_INSTALL_LIB_DIR R\"(${CURRENT_PACKAGES_DIR}\\lib)\"" "")
-vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/botan/build.h" "#define BOTAN_INSTALL_LIB_DIR R\"(${CURRENT_PACKAGES_DIR}/lib)\"" "")
-vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/botan/build.h" "--prefix=${CURRENT_PACKAGES_DIR}" "")
-
-file(INSTALL "${SOURCE_PATH}/license.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/license.txt")

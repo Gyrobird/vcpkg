@@ -1,160 +1,89 @@
-
-# It is possible to run into some issues when profiling when we uses Tracy client as a shared client
-# As as safety measure let's build Tracy as a static library for now
-# More details on Tracy Discord (e.g. https://discord.com/channels/585214693895962624/585214693895962630/953599951328403506)
-vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
-
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO wolfpld/tracy
-    REF v0.9
-    SHA512 00e8ff6d73d0428eb7a77fc5e0556458285922fbf9d5f0d42ed4f27ff98ffcd96b0f59bbaa3c103fd0903283ded6e7577d2a49362e5803cdbac0f3236af957cb
+    REF "v${VERSION}"
+    SHA512 18c0c589a1d97d0760958c8ab00ba2135bc602fd359d48445b5d8ed76e5b08742d818bb8f835b599149030f455e553a92db86fb7bae049b47820e4401cf9f935
     HEAD_REF master
     PATCHES
-        001-fix-vcxproj-vcpkg.patch
-        002-fix-capstone-5.patch
-        003-fix-imgui-path.patch
-        004-fix-crash-handler.patch
+        build-tools.patch
+        fix-vendor-versions.patch
+        fix-imgui-patch.patch
+        downgrade-capstone-5.patch # tracy wants capstone-6-alpha but vcpkg ships the most recent production capstone, 5.0.6 as of 2026-02-04
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
-        FEATURES
-            on-demand TRACY_ON_DEMAND
-        INVERTED_FEATURES
-            crash-handler TRACY_NO_CRASH_HANDLER
+    FEATURES
+        on-demand TRACY_ON_DEMAND
+        fibers	  TRACY_FIBERS
+        verbose   TRACY_VERBOSE
+    INVERTED_FEATURES
+        crash-handler TRACY_NO_CRASH_HANDLER
 )
+
+vcpkg_check_features(OUT_FEATURE_OPTIONS TOOLS_OPTIONS
+    FEATURES
+        cli-tools VCPKG_CLI_TOOLS
+        gui-tools VCPKG_GUI_TOOLS
+)
+
+if ("gui-tools" IN_LIST FEATURES)
+   vcpkg_from_github(
+       OUT_SOURCE_PATH tracy_imgui_path
+       REPO ocornut/imgui
+       REF "v1.92.5-docking"
+       SHA512 4618b8bd6e65ac27cd7cecb3469d135622279d83f8a580c028231578f7023c4465911c5878ee7e40c2f6dda606aef86f27c3cecfb7bc9a6022bd1d89eed17c29
+       PATCHES
+           "${SOURCE_PATH}/cmake/imgui-emscripten.patch"
+           "${SOURCE_PATH}/cmake/imgui-loader.patch"
+   )
+   list(APPEND TOOLS_OPTIONS "-DImGui_SOURCE_DIR=${tracy_imgui_path}")
+endif()
+
+if("cli-tools" IN_LIST FEATURES OR "gui-tools" IN_LIST FEATURES)
+    vcpkg_find_acquire_program(PKGCONFIG)
+    list(APPEND TOOLS_OPTIONS "-DPKG_CONFIG_EXECUTABLE=${PKGCONFIG}")
+endif()
 
 vcpkg_cmake_configure(
     SOURCE_PATH ${SOURCE_PATH}
-    OPTIONS ${FEATURE_OPTIONS}
+    OPTIONS
+        -DDOWNLOAD_CAPSTONE=OFF
+        -DLEGACY=ON
+        -DCMAKE_FIND_PACKAGE_TARGETS_GLOBAL=ON
+        -DCMAKE_DISABLE_FIND_PACKAGE_Git=ON
+        ${FEATURE_OPTIONS}
+    OPTIONS_RELEASE
+        ${TOOLS_OPTIONS}
+    MAYBE_UNUSED_VARIABLES
+        DOWNLOAD_CAPSTONE
+        LEGACY
+        CMAKE_DISABLE_FIND_PACKAGE_Git
+        ImGui_SOURCE_DIR
 )
 vcpkg_cmake_install()
+vcpkg_copy_pdbs()
+vcpkg_cmake_config_fixup(PACKAGE_NAME Tracy CONFIG_PATH "lib/cmake/Tracy")
 
-if(VCPKG_TARGET_IS_LINUX)
-    set(any_tracy_tool_requested OFF)
-    if(profiler IN_LIST FEATURES)
-        message(WARNING
-"Tracy currently requires the following libraries from the system package manager to build its tools:
-    gtk+-3.0
-    tbb
+function(tracy_copy_tool tool_name tool_dir)
+    vcpkg_copy_tools(
+        TOOL_NAMES "${tool_name}"
+        SEARCH_DIR "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/${tool_dir}"
+    )
+endfunction()
 
-These can be installed on Ubuntu systems via sudo apt install libgtk-3-dev libtbb-dev")
-        set(any_tracy_tool_requested ON)
-    else()
-        foreach(CLI_TOOL capture csvexport import-chrome update)
-            if(${CLI_TOOL} IN_LIST FEATURES)
-                message(WARNING
-"Tracy currently requires the following libraries from the system package manager to build its tools:
-    tbb
-
-These can be installed on Ubuntu systems via sudo apt install libtbb-dev")
-                set(any_tracy_tool_requested ON)
-                break()
-            endif()
-        endforeach()
-    endif()
-
-endif()
-
-vcpkg_list(SET tracy_tools)
+set(TOOLS)
 if("cli-tools" IN_LIST FEATURES)
-    vcpkg_list(APPEND tracy_tools capture csvexport import-chrome update)
+    list(APPEND TOOLS tracy-capture tracy-csvexport)
+    tracy_copy_tool(tracy-import-chrome import)
+    tracy_copy_tool(tracy-import-fuchsia import)
+    tracy_copy_tool(tracy-update update)
 endif()
 if("gui-tools" IN_LIST FEATURES)
-    vcpkg_list(APPEND tracy_tools profiler)
+    list(APPEND TOOLS tracy-profiler)
 endif()
 
-function(tracy_tool_install_make tracy_TOOL tracy_TOOL_NAME)
-    foreach(buildtype IN ITEMS "debug" "release")
-        if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "${buildtype}")
-            if("${buildtype}" STREQUAL "debug")
-                set(short_buildtype "-dbg")
-                set(path_suffix "/debug")
-            else()
-                set(short_buildtype "-rel")
-                set(path_suffix "")
-            endif()
-
-            file(COPY "${SOURCE_PATH}/${tracy_TOOL}/build/unix" DESTINATION "${SOURCE_PATH}/${tracy_TOOL}/_build")
-            file(RENAME "${SOURCE_PATH}/${tracy_TOOL}/_build/unix" "${SOURCE_PATH}/${tracy_TOOL}/build/unix${short_buildtype}")
-            file(REMOVE_RECURSE "${SOURCE_PATH}/${tracy_TOOL}/_build")
-
-            set(path_makefile_dir "${SOURCE_PATH}/${tracy_TOOL}/build/unix${short_buildtype}")
-            cmake_path(RELATIVE_PATH path_makefile_dir 
-                BASE_DIRECTORY "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}${short_buildtype}"
-                OUTPUT_VARIABLE relative_path_makefile_dir)
-
-            vcpkg_backup_env_variables(VARS PKG_CONFIG_PATH)
-            vcpkg_host_path_list(PREPEND ENV{PKG_CONFIG_PATH} "${CURRENT_INSTALLED_DIR}${path_suffix}/lib/pkgconfig")
-
-            message(STATUS "Building ${tracy_TOOL_NAME} ${TARGET_TRIPLET}${short_buildtype}")
-            vcpkg_build_make(
-                BUILD_TARGET ${buildtype}
-                SUBPATH ${relative_path_makefile_dir}
-                LOGFILE_ROOT "build-${tracy_TOOL}"
-            )
-            vcpkg_restore_env_variables(VARS PKG_CONFIG_PATH)
-
-            file(INSTALL "${SOURCE_PATH}/${tracy_TOOL}/build/unix${short_buildtype}/${tracy_TOOL_NAME}-${buildtype}" DESTINATION "${CURRENT_PACKAGES_DIR}${path_suffix}/tools/${PORT}" RENAME "${tracy_TOOL_NAME}")
-        endif()
-    endforeach()
-endfunction()
-
-function(tracy_tool_install_win32 tracy_TOOL tracy_TOOL_NAME)
-  vcpkg_install_msbuild(
-    SOURCE_PATH "${SOURCE_PATH}"
-    PROJECT_SUBPATH "${tracy_TOOL}/build/win32/${tracy_TOOL_NAME}.sln"
-    USE_VCPKG_INTEGRATION
-  )
-endfunction()
-
-if("capture" IN_LIST tracy_tools)
-    if(VCPKG_TARGET_IS_WINDOWS)
-        tracy_tool_install_win32(capture capture)
-    else()
-        tracy_tool_install_make(capture capture)
-    endif()
+if(TOOLS)
+    vcpkg_copy_tools(TOOL_NAMES ${TOOLS} AUTO_CLEAN)
 endif()
-
-if("csvexport" IN_LIST tracy_tools)
-    if(VCPKG_TARGET_IS_WINDOWS)
-        tracy_tool_install_win32(csvexport csvexport)
-    else()
-        tracy_tool_install_make(csvexport csvexport)
-    endif()
-endif()
-
-if("import-chrome" IN_LIST tracy_tools)
-    if(VCPKG_TARGET_IS_WINDOWS)
-        tracy_tool_install_win32(import-chrome import-chrome)
-    else()
-        tracy_tool_install_make(import-chrome import-chrome)
-    endif()
-endif()
-
-if("profiler" IN_LIST tracy_tools)
-    if(VCPKG_TARGET_IS_WINDOWS)
-        tracy_tool_install_win32(profiler Tracy)
-    else()
-        tracy_tool_install_make(profiler Tracy)
-    endif()
-endif()
-
-if("update" IN_LIST tracy_tools)
-    if(VCPKG_TARGET_IS_WINDOWS)
-        tracy_tool_install_win32(update update)
-    else()
-        tracy_tool_install_make(update update)
-    endif()
-endif()
-
-vcpkg_copy_pdbs()
-vcpkg_cmake_config_fixup(PACKAGE_NAME Tracy)
-vcpkg_fixup_pkgconfig()
-
-# Handle copyright
-file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
-
-# Cleanup
-file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")

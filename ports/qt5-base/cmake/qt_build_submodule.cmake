@@ -20,6 +20,18 @@ function(qt_build_submodule SOURCE_PATH)
     qt_fix_cmake(${CURRENT_PACKAGES_DIR} ${PORT})
     vcpkg_fixup_pkgconfig() # Needs further investigation if this is enough!
 
+    # taken from qt5-base portfile.cmake
+    if(VCPKG_TARGET_IS_OSX)
+        file(GLOB _debug_files "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/*_debug.pc")
+        foreach(_file ${_debug_files})
+            string(REGEX REPLACE "_debug\\.pc$" ".pc" _new_filename "${_file}")
+            string(REGEX MATCH "(Qt5[a-zA-Z]+)_debug\\.pc$" _not_used "${_file}")
+            set(_name ${CMAKE_MATCH_1})
+            file(STRINGS "${_file}" _version REGEX "^(Version):.+$")
+            file(WRITE "${_new_filename}" "Name: ${_name}\nDescription: Forwarding to the _debug version by vcpkg\n${_version}\nRequires: ${_name}_debug\n")
+        endforeach()
+    endif()
+
     #Replace with VCPKG variables if PR #7733 is merged
     unset(BUILDTYPES)
     if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
@@ -122,5 +134,10 @@ function(qt_build_submodule SOURCE_PATH)
             endforeach()
         endif()
     endif()
+
+    # Remove duplicate flags from qmodule.pri issue -> https://github.com/microsoft/vcpkg/issues/28835
+    file(READ "${CURRENT_INSTALLED_DIR}/tools/qt5/mkspecs/qmodule.pri" QMODULE_PRI_CONTENT)
+    string(REGEX REPLACE "QMAKE_CXXFLAGS_RELEASE\\+=[^\n]*\n" "QMAKE_CXXFLAGS_RELEASE=\n" QMODULE_PRI_CONTENT ${QMODULE_PRI_CONTENT})
+    file(WRITE "${CURRENT_INSTALLED_DIR}/tools/qt5/mkspecs/qmodule.pri" "${QMODULE_PRI_CONTENT}")
 
 endfunction()

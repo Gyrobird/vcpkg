@@ -1,13 +1,8 @@
-
-if ("tools" IN_LIST FEATURES AND VCPKG_TARGET_IS_UWP)
-    message(FATAL_ERROR "Tools cannot be built on UWP.")
-endif()
-
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO Chlumsky/msdfgen
-    REF a811ef8935354d3f6d767cff6c4eebeb683777f2 # accessed on 2023-01-20
-    SHA512 6c7fb9e9a4f4dee2502e1dca2c4612aae005697476e30664cc263f09e336b1cd0b529d75af667cdd9063ac1dd183867ce9f5bb88731e3071687c87937dab29d9
+    REF "v${VERSION}"
+    SHA512 4b2cad8d308f6c7d4730ef92f56c784277dd24eb94b3ba9e8db2080a96bbe789bfe12125403107cbac5c7a21c81b06a25a02fb59781273b178397fa3beed8989
     HEAD_REF master
 )
 
@@ -52,4 +47,4 @@ endif()
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 
 # license
-file(INSTALL "${SOURCE_PATH}/LICENSE.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE.txt")

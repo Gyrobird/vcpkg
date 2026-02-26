@@ -1,8 +1,8 @@
 vcpkg_from_github(
   OUT_SOURCE_PATH SOURCE_PATH
   REPO KhronosGroup/OpenGL-Registry
-  REF 5bae8738b23d06968e7c3a41308568120943ae77
-  SHA512 3f8c58474627ded85d95f8a4d86329ec4f55b179eb2df393983462d42088e9496eef1a5980481f4b085e6ffb749cd5dd3b312a1e2b7b8189d9723a673ec65b0d
+  REF 0b449b97cdf1043eef5e1f0e235cbbab6ec10c86
+  SHA512 148e1bfe4cc199bcc2c23b22d0b3e4988a29389d7f510ba4a6340672dbb7ab99bb836d2c08587499484df704d51a1adf4f0dc3a30d5ad8977ee0ad339163b17e
   HEAD_REF master
 )
 
@@ -19,12 +19,7 @@ file(COPY
   DESTINATION "${CURRENT_PACKAGES_DIR}/share/opengl"
 )
 
-# Using the Makefile because it is the smallest file with a complete copy of the license text
-file(
-  INSTALL "${SOURCE_PATH}/xml/Makefile"
-  DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}"
-  RENAME copyright
-)
+vcpkg_install_copyright(FILE_LIST "${CURRENT_PORT_DIR}/copyright")
 
 # pc layout from cygwin (consumed in xserver!)
 file(WRITE "${CURRENT_PACKAGES_DIR}/share/pkgconfig/khronos-opengl-registry.pc" [=[
@@ -33,5 +28,5 @@ datadir=${prefix}/share
 specdir=${datadir}/opengl
 Name: khronos-opengl-registry
 Description: Khronos OpenGL registry
-Version: git4594c03239fb76580bc5d5a13acb2a8f563f0158
+Version: git3530768138c5ba3dfbb2c43c830493f632f7ea33
 ]=])

@@ -5,42 +5,42 @@ endif()
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO zlib-ng/minizip-ng
-    REF 241428886216f0f0efd6926efcaaaa13794e51bd #v3.0.7
-    SHA512 779a53fafe63b64f5f703448262871c323f5753cbb58001dd0d0ef10de8d3bd7bb6055db4e763e664ccb5b781ce8dd06bf7c3e6b38eca019de835322a833fa06
+    REF "${VERSION}"
+    SHA512 9ea5dde14acd2f7d1efd0e38b11017b679d3aaabac61552f9c5f4c7f45f2563543e0fbb2d74429c6b1b9c37d8728ebc4f1cf0efad5f71807c11bb8a2a681a556
     HEAD_REF master
-    PATCHES 
-        Modify-header-file-path.patch
+    PATCHES
+        dependencies.diff
 )
 
 vcpkg_check_features(
     OUT_FEATURE_OPTIONS FEATURE_OPTIONS
     FEATURES
         pkcrypt MZ_PKCRYPT
-        signing MZ_SIGNING
-        wzaes MZ_WZAES
+        wzaes   MZ_WZAES
         openssl MZ_OPENSSL
-        bzip2 MZ_BZIP2
-        lzma MZ_LZMA
-        zlib MZ_ZLIB
-        zstd MZ_ZSTD
+        bzip2   MZ_BZIP2
+        lzma    MZ_LZMA
+        zlib    MZ_ZLIB
+        zstd    MZ_ZSTD
 )
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
-    DISABLE_PARALLEL_CONFIGURE
-    OPTIONS 
+    OPTIONS
         ${FEATURE_OPTIONS}
         -DMZ_FETCH_LIBS=OFF
-        -DMZ_PROJECT_SUFFIX:STRING=-ng
+        -DMZ_LIB_SUFFIX=-ng
+        -DMZ_ICONV=OFF
+        -DCMAKE_DISABLE_FIND_PACKAGE_ZLIBNG=ON # minizip-ng 4.0.10 searches for zlib-ng first before zlib - we provide zlib
 )
 
 vcpkg_cmake_install()
 
 vcpkg_fixup_pkgconfig()
-vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/${PORT})
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/minizip-ng)
 vcpkg_copy_pdbs()
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 
-configure_file("${SOURCE_PATH}/LICENSE" "${CURRENT_PACKAGES_DIR}/share/${PORT}/copyright" COPYONLY)
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")

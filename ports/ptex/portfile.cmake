@@ -1,35 +1,38 @@
-set(PTEX_VER 2.3.2)
-
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO wdas/ptex
-    REF 1b8bc985a71143317ae9e4969fa08e164da7c2e5
-    SHA512 37f2df9ec195f3d69d9526d0dea6a93ef49d69287bfae6ccd9671477491502ea760ed14e3b206b4f488831ab728dc749847b7d176c9b8439fb58b0a0466fe6c5
+    REF "v${VERSION}"
+    SHA512 8c9d1e2b26f74ea988f4df6f4a6b342a152a8068ff7f85eacdfbab9f516d2ab15282f16326e9527d0f842f4eb8e16858eb57c19b8bbee153f1ab074175571025
     HEAD_REF master
     PATCHES
         fix-build.patch
-        fix-config.cmake.patch
+        fix-android.patch
 )
 
-if (VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    set(BUILD_SHARED_LIB ON)
-    set(BUILD_STATIC_LIB OFF)
-else()
-    set(BUILD_SHARED_LIB OFF)
-    set(BUILD_STATIC_LIB ON)
-endif()
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "static" BUILD_STATIC_LIB)
+string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "dynamic" BUILD_SHARED_LIB)
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     DISABLE_PARALLEL_CONFIGURE
     OPTIONS
-        -DPTEX_VER=v${PTEX_VER}
+        -DCMAKE_CXX_STANDARD=17
+        "-DPTEX_VER=v${VERSION}"
         -DPTEX_BUILD_SHARED_LIBS=${BUILD_SHARED_LIB}
         -DPTEX_BUILD_STATIC_LIBS=${BUILD_STATIC_LIB}
 )
 
 vcpkg_cmake_install()
-vcpkg_cmake_config_fixup(CONFIG_PATH share/cmake/Ptex)
+
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/Ptex )
+file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/lib/pkgconfig")
+file(RENAME "${CURRENT_PACKAGES_DIR}/share/pkgconfig/ptex.pc" "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/ptex.pc")
+if(NOT VCPKG_BUILD_TYPE)
+  file(COPY "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/ptex.pc" DESTINATION "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/")
+endif()
+vcpkg_fixup_pkgconfig()
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/share/pkgconfig")
+
 vcpkg_copy_pdbs()
 
 foreach(HEADER PtexHalf.h Ptexture.h)
@@ -44,4 +47,5 @@ endforeach()
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include" "${CURRENT_PACKAGES_DIR}/debug/share")
 
-file(INSTALL "${SOURCE_PATH}/src/doc/License.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")

@@ -1,8 +1,8 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO taglib/taglib
-    REF v1.13
-    SHA512 b6e3253d158b41173073c0da1915f5e4a3de947db918660817cb1c755fba7e3723ea1a335fbbc30b0dcf942348a471b493fe2ce1d52d1a808578edee14e1bfc7
+    REF "v${VERSION}"
+    SHA512 e7608725eb9b3ebeb3a767473efd443a8cc2c8b21ea129e93ad0e044179939c27ce63bf8fea9402718be647e284850afc67fe0ff4a8d9d3d8111ad2108767a9e
     HEAD_REF master
 )
 
@@ -19,15 +19,16 @@ vcpkg_cmake_configure(
 )
 vcpkg_cmake_install()
 vcpkg_fixup_pkgconfig()
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/taglib)
 
 set(pcfile "${CURRENT_PACKAGES_DIR}/lib/pkgconfig/taglib.pc")
 if(EXISTS "${pcfile}")
-    vcpkg_replace_string("${pcfile}" "Requires: " "Requires: zlib")
+    vcpkg_replace_string("${pcfile}" "Requires: " "Requires: zlib" IGNORE_UNCHANGED)
     vcpkg_replace_string("${pcfile}" " -lz" "")
 endif()
 set(pcfile "${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/taglib.pc")
 if(EXISTS "${pcfile}")
-    vcpkg_replace_string("${pcfile}" "Requires: " "Requires: zlib")
+    vcpkg_replace_string("${pcfile}" "Requires: " "Requires: zlib" IGNORE_UNCHANGED)
     vcpkg_replace_string("${pcfile}" " -lz" "")
 endif()
 

@@ -1,13 +1,16 @@
-string(REGEX MATCH "^([0-9]*[.][0-9]*)" GLIB_MAJOR_MINOR "${VERSION}")
+string(REGEX MATCH "^([0-9]*[.][0-9]*)" VERSION_MAJOR_MINOR "${VERSION}")
+# https://github.com/GNOME/glib/blob/main/SECURITY.md#supported-versions
+if(NOT VERSION_MAJOR_MINOR MATCHES "[02468]\$")
+    message("${Z_VCPKG_BACKCOMPAT_MESSAGE_LEVEL}" "glib ${VERSION_MAJOR_MINOR} is a not a \"stable release series\".")
+endif()
+# vcpkg_from_* is not used because the project uses submodules and Anubis deployed to GNOME's gitlab
+# causes vcpkg_from_gitlab to fail for several users
 vcpkg_download_distfile(GLIB_ARCHIVE
-    URLS "https://download.gnome.org/sources/glib/${GLIB_MAJOR_MINOR}/glib-${VERSION}.tar.xz"
-    FILENAME "glib-${VERSION}.tar.xz"
-    SHA512 7ab8740925fa4ed2d860a35544c475ae905df5fa7fc0cc64ffa8c543df6073794e44c8ff39e3e1de1d677016ef9d27e9bc709d2505d13090faa8d6c47cd64bd0
-)
-vcpkg_download_distfile(GLIB_MR_3386
-    URLS "https://gitlab.gnome.org/GNOME/glib/-/merge_requests/3386.diff"
-    FILENAME "glib-mr-3386.diff"
-    SHA512 cb67e8908a7cb6f945d019da1bf56f504b9c2131a832bcdfbdc61c973c89efd8e4380d5d67f83e229998da1e8579f3ff87b7695a3318eee9613d1ab1168bd0db
+    URLS
+        "https://download.gnome.org/sources/${PORT}/${VERSION_MAJOR_MINOR}/${PORT}-${VERSION}.tar.xz"
+        "https://www.mirrorservice.org/sites/ftp.gnome.org/pub/GNOME/sources/${PORT}/${VERSION_MAJOR_MINOR}/${PORT}-${VERSION}.tar.xz"
+    FILENAME "${PORT}-${VERSION}.tar.xz"
+    SHA512 13e8beb84f3464f50c9764d0d3c6822a4bb41ae65e6c3ffac4200a5b441acdd2eb6f838a6b0722cae501e367ce9cfd4f8516b684a391c2f088a593172abcacd9
 )
 
 vcpkg_extract_source_archive(SOURCE_PATH
@@ -15,11 +18,15 @@ vcpkg_extract_source_archive(SOURCE_PATH
     PATCHES
         use-libiconv-on-windows.patch
         libintl.patch
-        ${GLIB_MR_3386}
 )
 
+set(LANGUAGES C CXX)
+if(VCPKG_TARGET_IS_OSX OR VCPKG_TARGET_IS_IOS)
+    list(APPEND LANGUAGES OBJC OBJCXX)
+endif()
+
 vcpkg_list(SET OPTIONS)
-if (selinux IN_LIST FEATURES)
+if ("selinux" IN_LIST FEATURES)
     if(NOT EXISTS "/usr/include/selinux")
         message(WARNING "SELinux was not found in its typical system location. Your build may fail. You can install SELinux with \"apt-get install selinux libselinux1-dev\".")
     endif()
@@ -28,7 +35,7 @@ else()
     list(APPEND OPTIONS -Dselinux=disabled)
 endif()
 
-if (libmount IN_LIST FEATURES)
+if ("libmount" IN_LIST FEATURES)
     list(APPEND OPTIONS -Dlibmount=enabled)
 else()
     list(APPEND OPTIONS -Dlibmount=disabled)
@@ -43,14 +50,18 @@ endif()
 
 vcpkg_configure_meson(
     SOURCE_PATH "${SOURCE_PATH}"
+    LANGUAGES ${LANGUAGES}
     ADDITIONAL_BINARIES
         ${ADDITIONAL_BINARIES}
     OPTIONS
         ${OPTIONS}
-        -Dgtk_doc=false
+        -Ddocumentation=false
+        -Ddtrace=disabled
         -Dinstalled_tests=false
+        -Dintrospection=disabled
         -Dlibelf=disabled
-        -Dman=false
+        -Dman-pages=disabled
+        -Dsysprof=disabled
         -Dtests=false
         -Dxattr=false
 )
@@ -73,6 +84,9 @@ endforeach()
 set(GLIB_TOOLS
     gapplication
     gdbus
+    gi-compile-repository
+    gi-decompile-typelib
+    gi-inspect-typelib
     gio
     gio-querymodules
     glib-compile-resources
@@ -110,11 +124,11 @@ endif()
 set(pc_replace_intl_path gio glib gmodule-no-export gobject gthread)
 foreach(pc_prefix IN LISTS pc_replace_intl_path)
     vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/lib/pkgconfig/${pc_prefix}-2.0.pc" "\"" "")
-    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/lib/pkgconfig/${pc_prefix}-2.0.pc" "\${prefix}/debug/lib/${LIBINTL_NAME}" "-lintl")
-    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/lib/pkgconfig/${pc_prefix}-2.0.pc" "\${prefix}/lib/${LIBINTL_NAME}" "-lintl")
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/lib/pkgconfig/${pc_prefix}-2.0.pc" "\${prefix}/debug/lib/${LIBINTL_NAME}" "-lintl" IGNORE_UNCHANGED)
+    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/lib/pkgconfig/${pc_prefix}-2.0.pc" "\${prefix}/lib/${LIBINTL_NAME}" "-lintl" IGNORE_UNCHANGED)
     if(NOT VCPKG_BUILD_TYPE)
         vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/${pc_prefix}-2.0.pc" "\"" "")
-        vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/${pc_prefix}-2.0.pc" "\${prefix}/lib/${LIBINTL_NAME}" "-lintl")
+        vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/debug/lib/pkgconfig/${pc_prefix}-2.0.pc" "\${prefix}/lib/${LIBINTL_NAME}" "-lintl" IGNORE_UNCHANGED)
     endif()
 endforeach()
 

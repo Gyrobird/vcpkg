@@ -4,12 +4,17 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO google/libphonenumber
     REF "v${VERSION}"
-    SHA512 b864f0ff25ed32813dfa7db5d92ada501566b4d6c366f6ee856dff82680631b88acf24def742015d112e20d4e8aa7c6312c04afb846d492d1f5bef93099775ec
+    SHA512 ce9f73c5345e8904e7621e6aa4dca77f7dc745bb309b5d36cae4e84b9689e08ef3893ab43c3da9defc5ca91a63e23e53df1e3be7e6f37406b4781fff9660fd55
     HEAD_REF master
-    PATCHES 
+    PATCHES
+        # fix compilation error due to deprecated warnings in protobuf generated files
+        disable-werror.patch
         fix-re2-identifiers.patch
         fix-icui18n-lib-name.patch
         fix-find-protobuf.patch
+        re2-2023-07-01-compat.patch
+        # enable C++17 for re2
+        enable-cpp17.patch
 )
 
 vcpkg_cmake_configure(
@@ -23,8 +28,11 @@ vcpkg_cmake_configure(
         -DBUILD_TESTING=OFF)
 
 vcpkg_cmake_install()
+vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/${PORT})
+
 vcpkg_copy_pdbs()
 
-vcpkg_cmake_config_fixup(CONFIG_PATH lib/cmake/${PORT})
-vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")

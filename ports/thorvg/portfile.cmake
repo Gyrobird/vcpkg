@@ -1,11 +1,9 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO thorvg/thorvg
-    REF v0.8.4
-    SHA512 8e885a8c56efb129fb3ab90b9a7b765b84f5f520a9c7a5c92af4ffe61bac1b928165801b64ebc7db77046e1aaf2918ed0ffdf98cb9572dc6d46ed6de3f96b9b7
+    REF "v${VERSION}"
+    SHA512 4d4863aabb69b23741241ef030af22f029bd44aa3983800436d5b6740bcd94be38b70fe28131e8945d1e39ae104396effb30a85ce6f7a698252c9ba079e84f3a
     HEAD_REF master
-    PATCHES
-        install-tools.patch
 )
 
 if(VCPKG_LIBRARY_LINKAGE STREQUAL "static")
@@ -15,9 +13,6 @@ else()
 endif()
 
 if ("tools" IN_LIST FEATURES)
-    if(VCPKG_TARGET_IS_WINDOWS)
-        message(FATAL_ERROR "This feature doesn't support Windows platform")
-    endif()
     list(APPEND BUILD_OPTIONS -Dtools=all)
 endif()
 
@@ -26,13 +21,14 @@ vcpkg_configure_meson(
     OPTIONS
         ${BUILD_OPTIONS}
         # see ${SOURCE_PATH}/meson_options.txt
-        -Dengines=sw
+        -Dengines=['sw']
         -Dloaders=all
-        -Dsavers=tvg
-        -Dvector=true
+        -Dsavers=all
+        -Dsimd=false # The reason for setting 'Dsimd=false' was that the creator said a false setting was necessary
         -Dbindings=capi
         -Dtests=false
-        -Dexamples=false
+        -Dstrip=false
+        -Dextra=['']
     OPTIONS_DEBUG
         -Dlog=true
         -Dbindir=${CURRENT_PACKAGES_DIR}/debug/bin
@@ -43,9 +39,9 @@ vcpkg_install_meson()
 vcpkg_fixup_pkgconfig()
 
 if ("tools" IN_LIST FEATURES)
-    vcpkg_copy_tools(TOOL_NAMES svg2tvg svg2png AUTO_CLEAN)
+    vcpkg_copy_tools(TOOL_NAMES tvg-svg2png tvg-lottie2gif AUTO_CLEAN)
 endif()
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
 
-file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")

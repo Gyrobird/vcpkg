@@ -1,16 +1,20 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO KhronosGroup/Vulkan-Headers
-    REF d732b2de303ce505169011d438178191136bfb00
-    SHA512 425d393dec95902af46f182b3d8d5d279efefddc9cbce05c2b3e4f1706fa05ff74db0a3db2adc370bf6ac25c152c66d9a96feaac8a427acdc46b1d27e69c2608
-    HEAD_REF v1.3.243
+    REF "vulkan-sdk-${VERSION}"
+    SHA512 1ec6aabf2267137dfe661fdc36bc25cc44b7c3ac3c6f0bbd8a1a1f5da30619e244ebfb905620c30002b914525d37ac7933f5a7dfd10117888f66d7c1b129612f
+    HEAD_REF main
+    PATCHES fix-vulkan-video-module-name.patch
 )
 
 set(VCPKG_BUILD_TYPE release) # header-only port
 
-vcpkg_cmake_configure(
-    SOURCE_PATH "${SOURCE_PATH}"
+vcpkg_cmake_configure(SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -DVULKAN_HEADERS_ENABLE_MODULE=OFF
+        -DVULKAN_HEADERS_ENABLE_TESTS=OFF
 )
 vcpkg_cmake_install()
 
-vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE.txt")
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE.md")
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/usage" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")

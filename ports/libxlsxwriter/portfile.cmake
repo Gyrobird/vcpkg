@@ -1,21 +1,30 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO jmcnamara/libxlsxwriter
-    REF RELEASE_1.1.5
-    SHA512 bd7db0fcf25ebf492b4d8f7da8fdb6cc79400d7d0fa5856ddae259cb24817034fc97d4828cbde42434f41198dcfb6732ac63c756abd962689f4249ca64bf19c6
-    HEAD_REF master
+    REF "v${VERSION}"
+    SHA512 a961a6d8094cc9f9996c9cf6c143e0382422eb4b63ec68d4ee1cce76afef562656855ed08c630974b67d33a4af9706df602c4ababad0767466b43a3e0563f2cf
+    HEAD_REF main
+)
+file(REMOVE_RECURSE "${SOURCE_PATH}/third_party/minizip")
+
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES
+    "dtoa"        USE_DTOA_LIBRARY
+    "openssl-md5" USE_OPENSSL_MD5
+    "mem-file"    USE_MEM_FILE
 )
 
+set(USE_WINDOWSSTORE OFF)
 if (VCPKG_TARGET_IS_UWP)
-  set(USE_WINDOWSSTORE ON)
-else()
-  set(USE_WINDOWSSTORE OFF)
+    set(USE_WINDOWSSTORE ON)
 endif()
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
-    OPTIONS 
+    OPTIONS
+        -DUSE_SYSTEM_MINIZIP=1
         -DWINDOWSSTORE=${USE_WINDOWSSTORE}
+        ${FEATURE_OPTIONS}
 )
 
 vcpkg_cmake_install()
@@ -24,5 +33,4 @@ vcpkg_copy_pdbs()
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 
-file(INSTALL "${SOURCE_PATH}/License.txt" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
-
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/License.txt")

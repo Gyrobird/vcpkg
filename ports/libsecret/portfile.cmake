@@ -1,11 +1,13 @@
-vcpkg_from_gitlab(
-    OUT_SOURCE_PATH SOURCE_PATH
-    GITLAB_URL https://gitlab.gnome.org
-    REPO GNOME/libsecret
-    REF 0.20.4
-    SHA512 b7357329e531ace536ac3c46ef51d022de9308181af227d2ff45c1ff6fe781a29fa93fe02e78f28c84eca8881c2cb90c92c675bcf9fd21b3d326dd84c5692ed5
-    HEAD_REF master
+string(REGEX MATCH [[^[0-9][0-9]*\.[1-9][0-9]*]] VERSION_MAJOR_MINOR ${VERSION})
+vcpkg_download_distfile(ARCHIVE
+    URLS
+        "https://download.gnome.org/sources/${PORT}/${VERSION_MAJOR_MINOR}/${PORT}-${VERSION}.tar.xz"
+        "https://www.mirrorservice.org/sites/ftp.gnome.org/pub/GNOME/sources/${PORT}/${VERSION_MAJOR_MINOR}/${PORT}-${VERSION}.tar.xz"
+    FILENAME "GNOME-${PORT}-${VERSION}.tar.xz"
+    SHA512 4731d9b2809a867f59e0702a55d1577ee0a968826c3df40717b1a6f6ea3f9d94ed95457dd82070d2914f5b1911d49fd6ae340bec6f4bcf88b6c804782ae7a24e
 )
+
+vcpkg_extract_source_archive(SOURCE_PATH ARCHIVE "${ARCHIVE}")
 
 vcpkg_configure_meson(
     SOURCE_PATH "${SOURCE_PATH}"
@@ -20,9 +22,8 @@ vcpkg_configure_meson(
 )
 vcpkg_install_meson()
 vcpkg_fixup_pkgconfig()
+vcpkg_copy_tools(TOOL_NAMES secret-tool AUTO_CLEAN)
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
-# There is no option to disable building secret-tool, so remove the executable.
-file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/bin" "${CURRENT_PACKAGES_DIR}/debug/bin")
 
-file(INSTALL "${SOURCE_PATH}/COPYING" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/COPYING")
